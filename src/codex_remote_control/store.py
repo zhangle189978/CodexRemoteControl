@@ -20,7 +20,7 @@ class TaskStore:
         self.sqlite_path = sqlite_path
         if sqlite_path != ":memory:":
             Path(sqlite_path).parent.mkdir(parents=True, exist_ok=True)
-        self._connection = sqlite3.connect(sqlite_path)
+        self._connection = sqlite3.connect(sqlite_path, check_same_thread=False)
         self._connection.row_factory = sqlite3.Row
         self._create_schema()
 
