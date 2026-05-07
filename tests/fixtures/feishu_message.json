@@ -1,0 +1,21 @@
+{
+  "schema": "2.0",
+  "header": {
+    "event_id": "evt_1",
+    "event_type": "im.message.receive_v1",
+    "tenant_key": "tenant_1"
+  },
+  "token": "token",
+  "event": {
+    "sender": {
+      "sender_id": {
+        "open_id": "ou_allowed"
+      }
+    },
+    "message": {
+      "message_id": "om_1",
+      "message_type": "text",
+      "content": "{\"text\":\"/状态\"}"
+    }
+  }
+}
