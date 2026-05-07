@@ -7,23 +7,8 @@ from codex_remote_control.config import AppConfig
 from codex_remote_control.executor import WorkspaceExecutor, WorkspaceNotAllowedError
 
 
-def _executor_for(workspace: Path, command: str = "python -c \"print('ok')\"") -> WorkspaceExecutor:
-    config = AppConfig.for_tests(workspace_roots=[workspace])
-    workspace_config = config.workspaces[0]
-    config = AppConfig(
-        server=config.server,
-        feishu=config.feishu,
-        storage=config.storage,
-        codex=config.codex,
-        workspaces=(
-            type(workspace_config)(
-                name=workspace_config.name,
-                root=workspace_config.root,
-                default_test_command=command,
-            ),
-        ),
-    )
-    return WorkspaceExecutor(config)
+def _executor_for(workspace: Path) -> WorkspaceExecutor:
+    return WorkspaceExecutor(AppConfig.for_tests(workspace_roots=[workspace]))
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -69,7 +54,7 @@ def test_run_command_runs_in_allowed_workspace_and_captures_stdout(tmp_path: Pat
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     command = "python -c \"from pathlib import Path; print(Path.cwd().name)\""
-    executor = _executor_for(workspace, command=command)
+    executor = _executor_for(workspace)
 
     result = executor.run_command(workspace, command)
 

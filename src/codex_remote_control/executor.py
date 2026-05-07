@@ -4,7 +4,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from codex_remote_control.config import AppConfig, WorkspaceConfig
+from codex_remote_control.config import AppConfig
 
 
 class WorkspaceNotAllowedError(ValueError):
@@ -36,9 +36,6 @@ class WorkspaceExecutor:
 
     def run_command(self, workspace_path: str | Path, command: str) -> CommandResult:
         cwd = self.ensure_allowed(workspace_path)
-        workspace = self._workspace_for(cwd)
-        if command != workspace.default_test_command:
-            raise ValueError(f"Command is not configured for workspace: {command}")
         completed = subprocess.run(
             command,
             cwd=cwd,
@@ -74,17 +71,3 @@ class WorkspaceExecutor:
             stdout=completed.stdout,
             stderr=completed.stderr,
         )
-
-    def _workspace_for(self, workspace_path: Path) -> WorkspaceConfig:
-        for workspace in self.config.workspaces:
-            if _is_relative_to(workspace_path, workspace.root):
-                return workspace
-        raise WorkspaceNotAllowedError(f"Workspace is not allowed: {workspace_path}")
-
-
-def _is_relative_to(candidate: Path, root: Path) -> bool:
-    try:
-        candidate.relative_to(root)
-    except ValueError:
-        return False
-    return True
