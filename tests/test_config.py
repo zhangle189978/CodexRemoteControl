@@ -1,0 +1,64 @@
+from pathlib import Path
+
+import pytest
+
+from codex_remote_control.config import AppConfig, load_config
+
+
+def test_load_config_normalizes_workspace_roots(tmp_path: Path) -> None:
+    workspace = tmp_path / "Repo"
+    workspace.mkdir()
+    config_file = tmp_path / "local.toml"
+    workspace_text = str(workspace).replace("\\", "\\\\")
+    sqlite_text = (tmp_path / "data.db").as_posix()
+    config_file.write_text(
+        f'''
+[server]
+host = "127.0.0.1"
+port = 8765
+
+[feishu]
+app_id = "cli_test"
+app_secret = "secret"
+verification_token = "token"
+encrypt_key = ""
+allowed_user_ids = ["ou_allowed"]
+
+[storage]
+sqlite_path = "{sqlite_text}"
+
+[codex]
+command = "codex"
+
+[[workspace]]
+name = "Repo"
+root = "{workspace_text}"
+default_test_command = "pytest"
+''',
+        encoding="utf-8",
+    )
+
+    config = load_config(config_file)
+
+    assert isinstance(config, AppConfig)
+    assert config.workspace_by_name("Repo").root == workspace.resolve()
+    assert config.is_allowed_workspace(workspace / "src")
+
+
+def test_rejects_path_outside_workspace(tmp_path: Path) -> None:
+    allowed = tmp_path / "Allowed"
+    blocked = tmp_path / "Blocked"
+    allowed.mkdir()
+    blocked.mkdir()
+    config = AppConfig.for_tests(
+        allowed_user_ids=["ou_allowed"],
+        workspace_roots=[allowed],
+    )
+
+    assert config.is_allowed_workspace(allowed / "file.py")
+    assert not config.is_allowed_workspace(blocked / "file.py")
+
+
+def test_missing_config_file_fails(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        load_config(tmp_path / "missing.toml")
