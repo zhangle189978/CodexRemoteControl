@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,13 @@ class CommandResult:
     exit_code: int
     stdout: str
     stderr: str
+
+
+class WorkspaceCommandError(RuntimeError):
+    def __init__(self, args: list[str], result: CommandResult) -> None:
+        super().__init__(f"Command failed ({result.exit_code}): {' '.join(args)}")
+        self.args_list = args
+        self.result = result
 
 
 class WorkspaceExecutor:
@@ -37,12 +45,11 @@ class WorkspaceExecutor:
     def run_command(self, workspace_path: str | Path, command: str) -> CommandResult:
         cwd = self.ensure_allowed(workspace_path)
         completed = subprocess.run(
-            command,
+            shlex.split(command),
             cwd=cwd,
             capture_output=True,
             text=True,
             timeout=600,
-            shell=True,
             check=False,
         )
         return CommandResult(
@@ -66,8 +73,11 @@ class WorkspaceExecutor:
             timeout=600,
             check=False,
         )
-        return CommandResult(
+        result = CommandResult(
             exit_code=completed.returncode,
             stdout=completed.stdout,
             stderr=completed.stderr,
         )
+        if result.exit_code != 0:
+            raise WorkspaceCommandError(["git", *args], result)
+        return result

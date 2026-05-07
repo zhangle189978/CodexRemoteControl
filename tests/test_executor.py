@@ -4,7 +4,11 @@ from pathlib import Path
 import pytest
 
 from codex_remote_control.config import AppConfig
-from codex_remote_control.executor import WorkspaceExecutor, WorkspaceNotAllowedError
+from codex_remote_control.executor import (
+    WorkspaceCommandError,
+    WorkspaceExecutor,
+    WorkspaceNotAllowedError,
+)
 
 
 def _executor_for(workspace: Path) -> WorkspaceExecutor:
@@ -40,6 +44,9 @@ def test_rejects_workspace_outside_whitelist(tmp_path: Path) -> None:
     with pytest.raises(WorkspaceNotAllowedError):
         executor.ensure_allowed(blocked)
 
+    with pytest.raises(WorkspaceNotAllowedError):
+        executor.git_status(blocked)
+
 
 def test_git_status_returns_short_status_from_initialized_repo(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
@@ -61,6 +68,18 @@ def test_run_command_runs_in_allowed_workspace_and_captures_stdout(tmp_path: Pat
     assert result.exit_code == 0
     assert result.stdout == "workspace\n"
     assert result.stderr == ""
+
+
+def test_run_command_does_not_expand_shell_metacharacters(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    command = "python -c \"print('ok')\" & python -c \"print('bad')\""
+    executor = _executor_for(workspace)
+
+    result = executor.run_command(workspace, command)
+
+    assert result.exit_code == 0
+    assert result.stdout == "ok\n"
 
 
 def test_git_diff_summary_returns_stat_output_for_modified_tracked_file(tmp_path: Path) -> None:
@@ -90,3 +109,15 @@ def test_commit_creates_commit_and_returns_short_hash(tmp_path: Path) -> None:
     assert len(short_hash) >= 7
     _git(repo, "rev-parse", "--verify", f"{short_hash}^{{commit}}")
     assert executor.git_status(repo) == ""
+
+
+def test_commit_failure_raises_instead_of_returning_existing_head(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "committed.txt").write_text("content\n", encoding="utf-8")
+    _git(repo, "add", "committed.txt")
+    _git(repo, "commit", "-m", "initial")
+    executor = _executor_for(repo)
+
+    with pytest.raises(WorkspaceCommandError):
+        executor.commit(repo, "nothing to commit")
