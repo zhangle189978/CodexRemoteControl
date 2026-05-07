@@ -1,0 +1,21 @@
+[server]
+host = "127.0.0.1"
+port = 8765
+
+[feishu]
+app_id = "cli_xxx"
+app_secret = "replace-me"
+verification_token = "replace-me"
+encrypt_key = ""
+allowed_user_ids = ["ou_xxx"]
+
+[storage]
+sqlite_path = "data/codex_remote_control.db"
+
+[codex]
+command = "codex"
+
+[[workspace]]
+name = "HollyDB"
+root = "C:\\Users\\89493\\Documents\\HollyDB"
+default_test_command = "pytest"
