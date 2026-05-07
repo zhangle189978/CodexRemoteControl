@@ -55,6 +55,19 @@ def test_parse_simple_control_commands() -> None:
     assert parse_message("/暂停").kind is CommandKind.PAUSE
     assert parse_message("/运行测试").kind is CommandKind.RUN_TESTS
     assert parse_message("/差异").kind is CommandKind.DIFF
+    assert parse_message("/最近会话").kind is CommandKind.RECENT_CODEX_SESSIONS
+
+
+def test_parse_import_recent_codex_session_command() -> None:
+    command = parse_message("/导入最近")
+
+    assert command.kind is CommandKind.IMPORT_RECENT_CODEX_SESSION
+    assert command.args == {"index": 1}
+
+    command = parse_message("/导入最近 2")
+
+    assert command.kind is CommandKind.IMPORT_RECENT_CODEX_SESSION
+    assert command.args == {"index": 2}
 
 
 def test_treat_unknown_slash_command_as_continue() -> None:
@@ -73,3 +86,7 @@ def test_malformed_switch_command_is_invalid() -> None:
 def test_malformed_new_task_command_is_invalid() -> None:
     assert parse_message("/新任务").kind is CommandKind.INVALID
     assert parse_message(r"/新任务 C:\Users\89493\Documents\HollyDB").kind is CommandKind.INVALID
+
+
+def test_malformed_import_recent_codex_session_is_invalid() -> None:
+    assert parse_message("/导入最近 abc").kind is CommandKind.INVALID

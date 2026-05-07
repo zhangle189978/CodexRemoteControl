@@ -16,6 +16,8 @@ class CommandKind(StrEnum):
     RUN_TESTS = "run_tests"
     DIFF = "diff"
     COMMIT = "commit"
+    RECENT_CODEX_SESSIONS = "recent_codex_sessions"
+    IMPORT_RECENT_CODEX_SESSION = "import_recent_codex_session"
     INVALID = "invalid"
 
 
@@ -68,5 +70,19 @@ def parse_message(text: str) -> ParsedCommand:
             return ParsedCommand(kind=CommandKind.DIFF)
         case "/提交":
             return ParsedCommand(kind=CommandKind.COMMIT)
+        case "/最近会话":
+            return ParsedCommand(kind=CommandKind.RECENT_CODEX_SESSIONS)
+        case "/导入最近":
+            if not rest:
+                return ParsedCommand(
+                    kind=CommandKind.IMPORT_RECENT_CODEX_SESSION,
+                    args={"index": 1},
+                )
+            if not rest.isdecimal():
+                return ParsedCommand(kind=CommandKind.INVALID, text="用法：/导入最近 [编号]")
+            return ParsedCommand(
+                kind=CommandKind.IMPORT_RECENT_CODEX_SESSION,
+                args={"index": int(rest)},
+            )
         case _:
             return ParsedCommand(kind=CommandKind.CONTINUE, text=stripped)

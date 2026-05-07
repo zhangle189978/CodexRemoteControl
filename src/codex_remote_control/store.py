@@ -65,6 +65,33 @@ class TaskStore:
         self._connection.commit()
         return self.get_task(int(cursor.lastrowid))
 
+    def create_imported_session_task(
+        self,
+        user_id: str,
+        title: str,
+        workspace_path: str | Path,
+        codex_session_id: str,
+        summary_text: str,
+    ) -> Task:
+        summary = json.dumps(
+            {
+                "source": "codex_session",
+                "codex_session_id": codex_session_id,
+                "summary": summary_text,
+            },
+            ensure_ascii=False,
+        )
+        task = self.create_task(
+            user_id=user_id,
+            title=title,
+            workspace_path=workspace_path,
+            permission=PermissionLevel.WORK,
+            goal=summary_text,
+        )
+        self.set_status(task.id, TaskStatus.CREATED, summary=summary)
+        self.set_current_task(user_id, task.id)
+        return self.get_task(task.id)
+
     def get_task(self, task_id: int) -> Task:
         row = self._connection.execute(
             "SELECT * FROM tasks WHERE id = ?",
@@ -106,6 +133,30 @@ class TaskStore:
         if row is None:
             return None
         return self.get_task(int(row["task_id"]))
+
+    def record_remote_user(self, user_id: str) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO remote_users (user_id, last_seen_at)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET last_seen_at = excluded.last_seen_at
+            """,
+            (user_id, now_utc().isoformat()),
+        )
+        self._connection.commit()
+
+    def get_last_remote_user_id(self) -> str | None:
+        row = self._connection.execute(
+            """
+            SELECT user_id
+            FROM remote_users
+            ORDER BY last_seen_at DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        if row is None:
+            return None
+        return str(row["user_id"])
 
     def set_status(self, task_id: int, status: TaskStatus, summary: str | None = None) -> None:
         timestamp = now_utc().isoformat()
@@ -180,6 +231,11 @@ class TaskStore:
             CREATE TABLE IF NOT EXISTS current_tasks (
                 user_id TEXT PRIMARY KEY,
                 task_id INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS remote_users (
+                user_id TEXT PRIMARY KEY,
+                last_seen_at TEXT NOT NULL
             );
             """
         )

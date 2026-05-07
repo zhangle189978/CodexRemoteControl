@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from codex_remote_control.models import PendingActionKind, PermissionLevel, TaskStatus
@@ -99,3 +100,36 @@ def test_get_current_task_returns_none_without_current_task(tmp_path: Path) -> N
     store = TaskStore(tmp_path / "tasks.db")
 
     assert store.get_current_task("ou_unknown") is None
+
+
+def test_records_and_loads_last_remote_user(tmp_path: Path) -> None:
+    store = TaskStore(tmp_path / "tasks.db")
+
+    store.record_remote_user("ding_user_1")
+    store.record_remote_user("ding_user_2")
+
+    assert store.get_last_remote_user_id() == "ding_user_2"
+
+
+def test_create_imported_session_task_sets_current_and_metadata(tmp_path: Path) -> None:
+    workspace = tmp_path / "Repo"
+    store = TaskStore(tmp_path / "tasks.db")
+
+    task = store.create_imported_session_task(
+        user_id="ding_user_1",
+        title="Build handoff",
+        workspace_path=workspace,
+        codex_session_id="019e-session",
+        summary_text="继续做钉钉接管",
+    )
+
+    current = store.get_current_task("ding_user_1")
+    summary = json.loads(task.summary)
+    assert current == task
+    assert task.permission is PermissionLevel.WORK
+    assert task.last_user_instruction == "继续做钉钉接管"
+    assert summary == {
+        "source": "codex_session",
+        "codex_session_id": "019e-session",
+        "summary": "继续做钉钉接管",
+    }

@@ -1,5 +1,7 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
+from codex_remote_control.codex_sessions import CodexSession
 from codex_remote_control.config import AppConfig
 from codex_remote_control.models import PermissionLevel, TaskStatus
 from codex_remote_control.router import ConversationRouter
@@ -14,6 +16,19 @@ def _router(tmp_path: Path) -> tuple[ConversationRouter, TaskStore]:
     return ConversationRouter(config, store), store
 
 
+class _FakeCodexSessions:
+    def __init__(self, sessions: list[CodexSession]) -> None:
+        self.sessions = sessions
+
+    def list_recent(self, limit: int = 5) -> list[CodexSession]:
+        return self.sessions[:limit]
+
+    def get_by_index(self, index: int) -> CodexSession | None:
+        if index < 1 or index > len(self.sessions):
+            return None
+        return self.sessions[index - 1]
+
+
 def test_new_task_sets_current_task(tmp_path: Path) -> None:
     router, store = _router(tmp_path)
     workspace = tmp_path / "Repo"
@@ -26,6 +41,7 @@ def test_new_task_sets_current_task(tmp_path: Path) -> None:
     assert current.permission is PermissionLevel.WORK
     assert current.title == "修复索引问题"
     assert "修复索引问题" in response
+    assert store.get_last_remote_user_id() == "ou_allowed"
 
 
 def test_plain_text_without_current_task_prompts_new_task(tmp_path: Path) -> None:
@@ -111,3 +127,69 @@ def test_sessions_list_and_switch_work(tmp_path: Path) -> None:
     assert current is not None
     assert current.id == first.id
     assert current.id != second.id
+
+
+def test_recent_codex_sessions_lists_import_candidates(tmp_path: Path) -> None:
+    workspace = tmp_path / "Repo"
+    workspace.mkdir()
+    config = AppConfig.for_tests(workspace_roots=[workspace])
+    store = TaskStore(":memory:")
+    router = ConversationRouter(
+        config,
+        store,
+        codex_sessions=_FakeCodexSessions(
+            [
+                CodexSession(
+                    session_id="019e0000-aaaa-bbbb-cccc-123456789abc",
+                    thread_name="Build handoff",
+                    updated_at=datetime(2026, 5, 7, 9, 0, tzinfo=UTC),
+                    workspace_path=workspace,
+                    summary="继续做钉钉接管",
+                )
+            ]
+        ),
+    )
+
+    response = router.handle("ou_allowed", "/最近会话")
+
+    assert "1. Build handoff" in response
+    assert "56789abc" in response
+    assert str(workspace) in response
+
+
+def test_import_recent_codex_session_creates_current_task(tmp_path: Path) -> None:
+    workspace = tmp_path / "Repo"
+    workspace.mkdir()
+    config = AppConfig.for_tests(workspace_roots=[workspace])
+    store = TaskStore(":memory:")
+    router = ConversationRouter(
+        config,
+        store,
+        codex_sessions=_FakeCodexSessions(
+            [
+                CodexSession(
+                    session_id="019e0000-aaaa-bbbb-cccc-123456789abc",
+                    thread_name="Build handoff",
+                    updated_at=datetime(2026, 5, 7, 9, 0, tzinfo=UTC),
+                    workspace_path=workspace,
+                    summary="继续做钉钉接管",
+                )
+            ]
+        ),
+    )
+
+    response = router.handle("ou_allowed", "/导入最近")
+
+    current = store.get_current_task("ou_allowed")
+    assert current is not None
+    assert current.title == "Build handoff"
+    assert current.workspace_path == workspace
+    assert "已导入 Codex 会话" in response
+
+
+def test_import_recent_codex_session_rejects_unknown_index(tmp_path: Path) -> None:
+    router, _store = _router(tmp_path)
+
+    response = router.handle("ou_allowed", "/导入最近 99")
+
+    assert response == "没有找到这个编号的 Codex 会话，请先使用 /最近会话 查看。"

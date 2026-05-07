@@ -67,11 +67,41 @@ The bridge reads DingTalk credentials from ignored `config/local.toml`, forwards
 inbound messages to the local webhook, and sends text replies back through the
 DingTalk robot API.
 
+## Codex Session Handoff
+
+From DingTalk, list recent Codex desktop sessions:
+
+```text
+/最近会话
+```
+
+Import the newest session, or a numbered item from the recent list:
+
+```text
+/导入最近
+/导入最近 2
+```
+
+From the PC side, expose the latest Codex desktop session to the last DingTalk
+user that messaged the bridge:
+
+```powershell
+.\scripts\adopt_current_codex_session.ps1
+```
+
+If no DingTalk user has messaged the bridge yet, pass the user id explicitly:
+
+```powershell
+.\scripts\adopt_current_codex_session.ps1 -UserId <dingtalk-sender-id>
+```
+
 ## Supported Commands
 
 ```text
 /新任务 <项目路径> <目标>
 /会话
+/最近会话
+/导入最近 [编号]
 /切换 <编号>
 /状态
 /继续 <补充指令>
