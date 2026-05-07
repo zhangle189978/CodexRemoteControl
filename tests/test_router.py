@@ -1,0 +1,113 @@
+from pathlib import Path
+
+from codex_remote_control.config import AppConfig
+from codex_remote_control.models import PermissionLevel, TaskStatus
+from codex_remote_control.router import ConversationRouter
+from codex_remote_control.store import TaskStore
+
+
+def _router(tmp_path: Path) -> tuple[ConversationRouter, TaskStore]:
+    workspace = tmp_path / "Repo"
+    workspace.mkdir()
+    config = AppConfig.for_tests(workspace_roots=[workspace])
+    store = TaskStore(":memory:")
+    return ConversationRouter(config, store), store
+
+
+def test_new_task_sets_current_task(tmp_path: Path) -> None:
+    router, store = _router(tmp_path)
+    workspace = tmp_path / "Repo"
+
+    response = router.handle("ou_allowed", f"/新任务 {workspace} 修复索引问题")
+
+    current = store.get_current_task("ou_allowed")
+    assert current is not None
+    assert current.workspace_path == workspace.resolve()
+    assert current.permission is PermissionLevel.WORK
+    assert current.title == "修复索引问题"
+    assert "修复索引问题" in response
+
+
+def test_plain_text_without_current_task_prompts_new_task(tmp_path: Path) -> None:
+    router, _store = _router(tmp_path)
+
+    response = router.handle("ou_allowed", "继续写测试")
+
+    assert "/新任务" in response
+
+
+def test_plain_text_does_not_confirm_pending_action(tmp_path: Path) -> None:
+    router, store = _router(tmp_path)
+    task = store.create_task(
+        user_id="ou_allowed",
+        title="Commit work",
+        workspace_path=tmp_path / "Repo",
+        permission=PermissionLevel.WORK,
+        goal="Commit work",
+    )
+    store.set_current_task("ou_allowed", task.id)
+    store.set_pending_commit(task.id, "feat: commit work")
+
+    response = router.handle("ou_allowed", "确认")
+
+    current = store.get_current_task("ou_allowed")
+    assert current is not None
+    assert current.status is TaskStatus.WAITING_CONFIRMATION
+    assert current.pending_action is not None
+    assert "/确认" in response
+
+
+def test_status_reports_current_task_title_and_status(tmp_path: Path) -> None:
+    router, store = _router(tmp_path)
+    task = store.create_task(
+        user_id="ou_allowed",
+        title="Fix router",
+        workspace_path=tmp_path / "Repo",
+        permission=PermissionLevel.WORK,
+        goal="Fix router",
+    )
+    store.set_current_task("ou_allowed", task.id)
+
+    response = router.handle("ou_allowed", "/状态")
+
+    assert "Fix router" in response
+    assert TaskStatus.CREATED.value in response
+
+
+def test_invalid_parser_result_is_surfaced_by_router(tmp_path: Path) -> None:
+    router, _store = _router(tmp_path)
+
+    response = router.handle("ou_allowed", "/切换 abc")
+
+    assert response == "用法：/切换 <编号>"
+
+
+def test_sessions_list_and_switch_work(tmp_path: Path) -> None:
+    router, store = _router(tmp_path)
+    workspace = tmp_path / "Repo"
+    first = store.create_task(
+        user_id="ou_allowed",
+        title="First task",
+        workspace_path=workspace,
+        permission=PermissionLevel.WORK,
+        goal="First task",
+    )
+    second = store.create_task(
+        user_id="ou_allowed",
+        title="Second task",
+        workspace_path=workspace,
+        permission=PermissionLevel.WORK,
+        goal="Second task",
+    )
+
+    sessions = router.handle("ou_allowed", "/会话")
+    assert "1. Second task" in sessions
+    assert "2. First task" in sessions
+
+    response = router.handle("ou_allowed", "/切换 2")
+
+    assert "First task" in response
+    current = store.get_current_task("ou_allowed")
+    assert current is not None
+    assert current.id == first.id
+    assert current.id != second.id
