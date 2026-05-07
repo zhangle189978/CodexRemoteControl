@@ -1,8 +1,15 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from codex_remote_control.config import AppConfig
-from codex_remote_control.feishu import FeishuEvent, parse_feishu_event, verify_event
+from codex_remote_control.feishu import (
+    FeishuEvent,
+    FeishuParseError,
+    parse_feishu_event,
+    verify_event,
+)
 
 
 def test_allowed_token_and_user_returns_allowed_result() -> None:
@@ -58,4 +65,36 @@ def test_fixture_json_can_be_parsed() -> None:
 
     assert event.message_id == "om_1"
     assert event.user_id == "ou_allowed"
+    assert event.token == "token"
     assert event.text == "/状态"
+
+
+def test_parse_rejects_malformed_content() -> None:
+    payload = {
+        "token": "token",
+        "event": {
+            "sender": {"sender_id": {"open_id": "ou_allowed"}},
+            "message": {"message_id": "om_1", "content": "not-json"},
+        },
+    }
+
+    with pytest.raises(FeishuParseError, match="invalid message content"):
+        parse_feishu_event(payload)
+
+
+def test_parse_rejects_missing_text() -> None:
+    payload = {
+        "token": "token",
+        "event": {
+            "sender": {"sender_id": {"open_id": "ou_allowed"}},
+            "message": {"message_id": "om_1", "content": "{\"not_text\":\"/状态\"}"},
+        },
+    }
+
+    with pytest.raises(FeishuParseError, match="missing text"):
+        parse_feishu_event(payload)
+
+
+def test_parse_rejects_missing_required_fields() -> None:
+    with pytest.raises(FeishuParseError, match="missing required field"):
+        parse_feishu_event({"token": "token"})

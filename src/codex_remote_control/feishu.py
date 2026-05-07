@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import hmac
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
+from json import JSONDecodeError
 
 from codex_remote_control.config import AppConfig
+
+
+class FeishuParseError(ValueError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -24,20 +31,33 @@ class VerifiedEvent:
 
 
 def parse_feishu_event(payload: dict) -> FeishuEvent:
-    event = payload["event"]
-    message = event["message"]
-    content = json.loads(message["content"])
+    try:
+        event = payload["event"]
+        message = event["message"]
+        content_raw = message["content"]
+        user_id = event["sender"]["sender_id"]["open_id"]
+        message_id = message["message_id"]
+        token = payload.get("token", "")
+    except KeyError as error:
+        raise FeishuParseError(f"missing required field: {error.args[0]}") from error
+
+    try:
+        content = json.loads(content_raw)
+    except (JSONDecodeError, TypeError) as error:
+        raise FeishuParseError("invalid message content") from error
+    if not isinstance(content, Mapping) or not isinstance(content.get("text"), str):
+        raise FeishuParseError("missing text")
 
     return FeishuEvent(
-        token=payload["token"],
-        user_id=event["sender"]["sender_id"]["open_id"],
+        token=token,
+        user_id=user_id,
         text=content["text"],
-        message_id=message["message_id"],
+        message_id=message_id,
     )
 
 
 def verify_event(event: FeishuEvent, config: AppConfig) -> VerifiedEvent:
-    if event.token != config.feishu.verification_token:
+    if not hmac.compare_digest(event.token, config.feishu.verification_token):
         return _denied(event, "invalid verification token")
     if event.user_id not in config.feishu.allowed_user_ids:
         return _denied(event, "user is not allowed")
