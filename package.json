@@ -1,0 +1,12 @@
+{
+  "name": "codex-remote-control-stream-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dingtalk:stream": "node scripts/dingtalk_stream_bridge.mjs"
+  },
+  "dependencies": {
+    "dingtalk-stream": "2.1.4"
+  }
+}

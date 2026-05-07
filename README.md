@@ -8,6 +8,7 @@ Windows-local chat gateway for controlled Codex coding tasks.
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
+npm install
 pytest
 ruff check .
 ```
@@ -35,6 +36,8 @@ Never commit `config/local.toml`.
 
 ## Run
 
+### Feishu or HTTP callback mode
+
 ```powershell
 uvicorn codex_remote_control.app:create_app --factory --host 127.0.0.1 --port 8765
 ```
@@ -44,6 +47,25 @@ configure the public URL in the chat bot:
 
 - `http://127.0.0.1:8765/feishu/webhook`
 - `http://127.0.0.1:8765/dingtalk/webhook`
+
+### DingTalk Stream mode
+
+DingTalk Stream mode does not need a public tunnel. Start the Python service in
+one terminal:
+
+```powershell
+.\.venv\Scripts\uvicorn.exe codex_remote_control.app:create_app --factory --host 127.0.0.1 --port 8765
+```
+
+Then start the Stream bridge in another terminal:
+
+```powershell
+.\scripts\start_dingtalk_stream.ps1
+```
+
+The bridge reads DingTalk credentials from ignored `config/local.toml`, forwards
+inbound messages to the local webhook, and sends text replies back through the
+DingTalk robot API.
 
 ## Supported Commands
 
