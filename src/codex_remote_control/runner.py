@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from codex_remote_control.codex_adapter import CodexAdapter
 from codex_remote_control.config import AppConfig
 from codex_remote_control.executor import WorkspaceCommandError, WorkspaceExecutor
@@ -17,14 +19,14 @@ class TaskRunner:
     ) -> None:
         self.config = config
         self.store = store
-        self.codex = codex or CodexAdapter()
+        self.codex = codex or CodexAdapter(config.codex.command)
         self.executor = executor or WorkspaceExecutor(config)
 
     def status(self, user_id: str) -> str:
         task = self.store.get_current_task(user_id)
         if task is None:
             return "没有当前任务，请使用 /新任务 <项目路径> <目标>。"
-        detail = task.summary or task.last_user_instruction
+        detail = _readable_summary(task.summary) or task.last_user_instruction
         return f"{task.title} - {task.status.value}\n{detail}"
 
     def continue_current(self, user_id: str, instruction: str) -> str:
@@ -36,7 +38,11 @@ class TaskRunner:
         if task.status is TaskStatus.WAITING_CONFIRMATION:
             return "当前任务等待确认 release 动作，必须使用 /确认 或 /拒绝。"
         result = self.codex.continue_task(task, instruction)
-        self.store.set_status(task.id, TaskStatus.RUNNING, result.summary)
+        self.store.set_status(
+            task.id,
+            TaskStatus.RUNNING,
+            _updated_summary(task.summary, result.summary),
+        )
         return result.summary
 
     def diff(self, user_id: str) -> str:
@@ -104,3 +110,33 @@ class TaskRunner:
 
     def _error_detail(self, error: WorkspaceCommandError) -> str:
         return error.result.stderr.strip() or error.result.stdout.strip() or str(error)
+
+
+def _updated_summary(current_summary: str, next_summary: str) -> str:
+    try:
+        value = json.loads(current_summary)
+    except json.JSONDecodeError:
+        return next_summary
+    if not isinstance(value, dict) or value.get("source") != "codex_session":
+        return next_summary
+    return json.dumps(
+        {
+            "source": "codex_session",
+            "codex_session_id": value.get("codex_session_id", ""),
+            "summary": next_summary,
+        },
+        ensure_ascii=False,
+    )
+
+
+def _readable_summary(summary: str) -> str:
+    if not summary:
+        return ""
+    try:
+        value = json.loads(summary)
+    except json.JSONDecodeError:
+        return summary
+    if isinstance(value, dict) and value.get("source") == "codex_session":
+        readable = value.get("summary")
+        return readable if isinstance(readable, str) else ""
+    return summary

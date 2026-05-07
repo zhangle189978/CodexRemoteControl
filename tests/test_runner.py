@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from codex_remote_control.codex_adapter import CodexResult
@@ -74,6 +75,53 @@ def test_continue_current_runs_codex_and_updates_status(tmp_path: Path) -> None:
     assert current.status is TaskStatus.RUNNING
     assert current.summary == "Implemented request"
     assert "Implemented request" in response
+
+
+def test_continue_imported_codex_session_preserves_source_metadata(tmp_path: Path) -> None:
+    runner, store, _executor, _codex = _runner(tmp_path)
+    task = _current_task(store, tmp_path)
+    store.set_status(
+        task.id,
+        TaskStatus.CREATED,
+        json.dumps(
+            {
+                "source": "codex_session",
+                "codex_session_id": "019e-session",
+                "summary": "用户：接管",
+            }
+        ),
+    )
+
+    response = runner.continue_current("ou_allowed", "继续实现")
+
+    current = store.get_task(task.id)
+    summary = json.loads(current.summary)
+    assert response == "Implemented request"
+    assert summary["source"] == "codex_session"
+    assert summary["codex_session_id"] == "019e-session"
+    assert summary["summary"] == "Implemented request"
+
+
+def test_status_for_imported_codex_session_shows_readable_summary(tmp_path: Path) -> None:
+    runner, store, _executor, _codex = _runner(tmp_path)
+    task = _current_task(store, tmp_path)
+    store.set_status(
+        task.id,
+        TaskStatus.CREATED,
+        json.dumps(
+            {
+                "source": "codex_session",
+                "codex_session_id": "019e-session",
+                "summary": "助手：可以从钉钉继续。",
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    response = runner.status("ou_allowed")
+
+    assert "助手：可以从钉钉继续。" in response
+    assert "codex_session_id" not in response
 
 
 def test_confirm_commits_pending_action_and_clears_it(tmp_path: Path) -> None:

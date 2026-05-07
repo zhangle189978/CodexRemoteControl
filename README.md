@@ -82,6 +82,11 @@ Import the newest session, or a numbered item from the recent list:
 /导入最近 2
 ```
 
+After importing, send `/继续 <message>` or plain text. Imported Codex sessions
+are resumed with `codex exec resume <session-id> <message>`, so the work
+continues against the original Codex session record and the final response is
+sent back to DingTalk.
+
 From the PC side, expose the latest Codex desktop session to the last DingTalk
 user that messaged the bridge:
 
