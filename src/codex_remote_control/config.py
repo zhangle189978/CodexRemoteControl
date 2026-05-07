@@ -59,7 +59,9 @@ class AppConfig:
                 app_secret="secret",
                 verification_token="token",
                 encrypt_key="",
-                allowed_user_ids=frozenset(allowed_user_ids or ["ou_allowed"]),
+                allowed_user_ids=frozenset(
+                    ["ou_allowed"] if allowed_user_ids is None else allowed_user_ids
+                ),
             ),
             storage=StorageConfig(sqlite_path=Path(":memory:")),
             codex=CodexConfig(command="codex"),
@@ -97,6 +99,7 @@ def load_config(path: str | Path) -> AppConfig:
     if not config_path.exists():
         raise FileNotFoundError(config_path)
     raw = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    base_dir = config_path.resolve().parent
     return AppConfig(
         server=ServerConfig(**raw["server"]),
         feishu=FeishuConfig(
@@ -106,7 +109,9 @@ def load_config(path: str | Path) -> AppConfig:
             encrypt_key=raw["feishu"].get("encrypt_key", ""),
             allowed_user_ids=frozenset(raw["feishu"]["allowed_user_ids"]),
         ),
-        storage=StorageConfig(sqlite_path=Path(raw["storage"]["sqlite_path"])),
+        storage=StorageConfig(
+            sqlite_path=_resolve_from_base(base_dir, Path(raw["storage"]["sqlite_path"]))
+        ),
         codex=CodexConfig(command=raw["codex"]["command"]),
         workspaces=tuple(
             WorkspaceConfig(
@@ -117,3 +122,9 @@ def load_config(path: str | Path) -> AppConfig:
             for item in raw.get("workspace", [])
         ),
     )
+
+
+def _resolve_from_base(base_dir: Path, candidate: Path) -> Path:
+    if candidate.is_absolute():
+        return candidate.resolve()
+    return (base_dir / candidate).resolve()

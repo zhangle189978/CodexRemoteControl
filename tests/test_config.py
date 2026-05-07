@@ -42,6 +42,7 @@ default_test_command = "pytest"
 
     assert isinstance(config, AppConfig)
     assert config.workspace_by_name("Repo").root == workspace.resolve()
+    assert config.storage.sqlite_path == (tmp_path / "data.db").resolve()
     assert config.is_allowed_workspace(workspace / "src")
 
 
@@ -56,7 +57,27 @@ def test_rejects_path_outside_workspace(tmp_path: Path) -> None:
     )
 
     assert config.is_allowed_workspace(allowed / "file.py")
+    assert config.is_allowed_workspace(allowed)
     assert not config.is_allowed_workspace(blocked / "file.py")
+
+
+def test_rejects_sibling_prefix_workspace(tmp_path: Path) -> None:
+    allowed = tmp_path / "Allowed"
+    sibling = tmp_path / "AllowedSibling"
+    allowed.mkdir()
+    sibling.mkdir()
+    config = AppConfig.for_tests(
+        allowed_user_ids=["ou_allowed"],
+        workspace_roots=[allowed],
+    )
+
+    assert not config.is_allowed_workspace(sibling / "file.py")
+
+
+def test_for_tests_allows_empty_user_whitelist(tmp_path: Path) -> None:
+    config = AppConfig.for_tests(allowed_user_ids=[], workspace_roots=[tmp_path])
+
+    assert config.feishu.allowed_user_ids == frozenset()
 
 
 def test_missing_config_file_fails(tmp_path: Path) -> None:
