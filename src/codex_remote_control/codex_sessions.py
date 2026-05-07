@@ -81,7 +81,7 @@ class CodexSessionSource:
         if rollout_path is None:
             return None, ""
         workspace_path: Path | None = None
-        last_user_text = ""
+        message_snippets: list[str] = []
         for row in _read_jsonl(rollout_path):
             if row.get("type") == "session_meta":
                 payload = row.get("payload")
@@ -89,10 +89,10 @@ class CodexSessionSource:
                     workspace_path = Path(payload["cwd"])
             if row.get("type") == "response_item":
                 payload = row.get("payload")
-                user_text = _extract_user_text(payload)
-                if user_text:
-                    last_user_text = user_text
-        return workspace_path, _truncate(last_user_text, 240)
+                message_text = _extract_message_text(payload)
+                if message_text:
+                    message_snippets.append(message_text)
+        return workspace_path, _truncate("\n".join(message_snippets[-6:]), 600)
 
     def _list_rollout_sessions(self) -> list[CodexSession]:
         sessions_dir = self.codex_home / "sessions"
@@ -109,7 +109,7 @@ class CodexSessionSource:
         session_id = ""
         workspace_path: Path | None = None
         thread_name = ""
-        last_user_text = ""
+        message_snippets: list[str] = []
         updated_at: datetime | None = None
         for row in _read_jsonl(rollout_path):
             timestamp = row.get("timestamp")
@@ -129,9 +129,9 @@ class CodexSessionSource:
                         thread_name = payload["thread_name"]
             if row.get("type") == "response_item":
                 payload = row.get("payload")
-                user_text = _extract_user_text(payload)
-                if user_text:
-                    last_user_text = user_text
+                message_text = _extract_message_text(payload)
+                if message_text:
+                    message_snippets.append(message_text)
         if not session_id or updated_at is None:
             return None
         return CodexSession(
@@ -139,7 +139,7 @@ class CodexSessionSource:
             thread_name=thread_name or session_id,
             updated_at=updated_at,
             workspace_path=workspace_path,
-            summary=_truncate(last_user_text, 240),
+            summary=_truncate("\n".join(message_snippets[-6:]), 600),
         )
 
     def _find_rollout_path(self, session_id: str) -> Path | None:
@@ -176,10 +176,17 @@ def _parse_datetime(raw: str) -> datetime:
     return parsed
 
 
-def _extract_user_text(payload: object) -> str:
+def _extract_message_text(payload: object) -> str:
     if not isinstance(payload, dict):
         return ""
-    if payload.get("type") != "message" or payload.get("role") != "user":
+    if payload.get("type") != "message":
+        return ""
+    role = payload.get("role")
+    if role == "user":
+        label = "用户"
+    elif role == "assistant":
+        label = "助手"
+    else:
         return ""
     content = payload.get("content")
     if not isinstance(content, list):
@@ -188,7 +195,10 @@ def _extract_user_text(payload: object) -> str:
     for item in content:
         if isinstance(item, dict) and isinstance(item.get("text"), str):
             texts.append(item["text"].strip())
-    return "\n".join(text for text in texts if text).strip()
+    text = "\n".join(text for text in texts if text).strip()
+    if not text:
+        return ""
+    return f"{label}：{text}"
 
 
 def _truncate(text: str, limit: int) -> str:

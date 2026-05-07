@@ -62,7 +62,53 @@ def test_lists_recent_codex_sessions_with_workspace_and_summary(tmp_path: Path) 
     assert sessions[0].session_id == "session-new"
     assert sessions[0].thread_name == "Build handoff"
     assert sessions[0].workspace_path == tmp_path / "Repo"
-    assert sessions[0].summary == "继续做钉钉接管"
+    assert sessions[0].summary == "用户：继续做钉钉接管"
+
+
+def test_summary_includes_recent_user_and_assistant_messages(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    (codex_home / "session_index.jsonl").write_text(
+        json.dumps(
+            {
+                "id": "session-new",
+                "thread_name": "Build handoff",
+                "updated_at": "2026-05-07T02:00:00Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _write_jsonl(
+        codex_home / "sessions" / "2026" / "05" / "07" / "rollout-session-new.jsonl",
+        [
+            {
+                "type": "session_meta",
+                "payload": {"id": "session-new", "cwd": str(tmp_path / "Repo")},
+            },
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "怎么切换会话？"}],
+                },
+            },
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "使用 /导入最近 1。"}],
+                },
+            },
+        ],
+    )
+
+    session = CodexSessionSource(codex_home).list_recent(limit=1)[0]
+
+    assert "用户：怎么切换会话？" in session.summary
+    assert "助手：使用 /导入最近 1。" in session.summary
 
 
 def test_get_by_index_uses_one_based_recent_order(tmp_path: Path) -> None:
