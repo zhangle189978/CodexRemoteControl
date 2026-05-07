@@ -24,6 +24,17 @@ verification_token = "token"
 encrypt_key = ""
 allowed_user_ids = ["ou_allowed"]
 
+[dingtalk]
+enabled = true
+client_id = "ding_test"
+client_secret = "ding_secret"
+gateway_token = "ding_token"
+gateway_password = ""
+require_mention = false
+group_policy = "open"
+group_session_scope = "group"
+allowed_user_ids = ["ding_user_1"]
+
 [storage]
 sqlite_path = "{sqlite_text}"
 
@@ -41,6 +52,11 @@ default_test_command = "pytest"
     config = load_config(config_file)
 
     assert isinstance(config, AppConfig)
+    assert config.dingtalk.enabled
+    assert config.dingtalk.client_id == "ding_test"
+    assert config.dingtalk.gateway_token == "ding_token"
+    assert not config.dingtalk.require_mention
+    assert config.dingtalk.allowed_user_ids == frozenset({"ding_user_1"})
     assert config.workspace_by_name("Repo").root == workspace.resolve()
     assert config.storage.sqlite_path == (tmp_path / "data.db").resolve()
     assert config.is_allowed_workspace(workspace / "src")

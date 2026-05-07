@@ -21,6 +21,19 @@ class FeishuConfig:
 
 
 @dataclass(frozen=True)
+class DingtalkConfig:
+    enabled: bool
+    client_id: str
+    client_secret: str
+    gateway_token: str
+    gateway_password: str
+    require_mention: bool
+    group_policy: str
+    group_session_scope: str
+    allowed_user_ids: frozenset[str]
+
+
+@dataclass(frozen=True)
 class StorageConfig:
     sqlite_path: Path
 
@@ -41,6 +54,7 @@ class WorkspaceConfig:
 class AppConfig:
     server: ServerConfig
     feishu: FeishuConfig
+    dingtalk: DingtalkConfig
     storage: StorageConfig
     codex: CodexConfig
     workspaces: tuple[WorkspaceConfig, ...]
@@ -62,6 +76,17 @@ class AppConfig:
                 allowed_user_ids=frozenset(
                     ["ou_allowed"] if allowed_user_ids is None else allowed_user_ids
                 ),
+            ),
+            dingtalk=DingtalkConfig(
+                enabled=True,
+                client_id="ding_test",
+                client_secret="secret",
+                gateway_token="ding_token",
+                gateway_password="",
+                require_mention=True,
+                group_policy="open",
+                group_session_scope="group",
+                allowed_user_ids=frozenset(),
             ),
             storage=StorageConfig(sqlite_path=Path(":memory:")),
             codex=CodexConfig(command="codex"),
@@ -100,6 +125,7 @@ def load_config(path: str | Path) -> AppConfig:
         raise FileNotFoundError(config_path)
     raw = tomllib.loads(config_path.read_text(encoding="utf-8"))
     base_dir = config_path.resolve().parent
+    dingtalk = raw.get("dingtalk", {})
     return AppConfig(
         server=ServerConfig(**raw["server"]),
         feishu=FeishuConfig(
@@ -108,6 +134,17 @@ def load_config(path: str | Path) -> AppConfig:
             verification_token=raw["feishu"]["verification_token"],
             encrypt_key=raw["feishu"].get("encrypt_key", ""),
             allowed_user_ids=frozenset(raw["feishu"]["allowed_user_ids"]),
+        ),
+        dingtalk=DingtalkConfig(
+            enabled=dingtalk.get("enabled", False),
+            client_id=dingtalk.get("client_id", ""),
+            client_secret=dingtalk.get("client_secret", ""),
+            gateway_token=dingtalk.get("gateway_token", ""),
+            gateway_password=dingtalk.get("gateway_password", ""),
+            require_mention=dingtalk.get("require_mention", True),
+            group_policy=dingtalk.get("group_policy", "open"),
+            group_session_scope=dingtalk.get("group_session_scope", "group"),
+            allowed_user_ids=frozenset(dingtalk.get("allowed_user_ids", [])),
         ),
         storage=StorageConfig(
             sqlite_path=_resolve_from_base(base_dir, Path(raw["storage"]["sqlite_path"]))

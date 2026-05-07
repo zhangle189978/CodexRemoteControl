@@ -1,6 +1,6 @@
 # Codex Remote Control
 
-Windows-local Feishu gateway for controlled Codex coding tasks.
+Windows-local chat gateway for controlled Codex coding tasks.
 
 ## Development
 
@@ -26,6 +26,8 @@ Fill:
 - `feishu.app_secret`
 - `feishu.verification_token`
 - `feishu.allowed_user_ids`
+- `dingtalk.gateway_token`
+- `dingtalk.allowed_user_ids` after you know your DingTalk sender id
 - `workspace.root`
 - `workspace.default_test_command`
 
@@ -37,8 +39,11 @@ Never commit `config/local.toml`.
 uvicorn codex_remote_control.app:create_app --factory --host 127.0.0.1 --port 8765
 ```
 
-Expose `http://127.0.0.1:8765/feishu/webhook` through a local tunnel during
-development, then configure that public URL in the Feishu bot.
+Expose one of these URLs through a local tunnel during development, then
+configure the public URL in the chat bot:
+
+- `http://127.0.0.1:8765/feishu/webhook`
+- `http://127.0.0.1:8765/dingtalk/webhook`
 
 ## Supported Commands
 

@@ -9,6 +9,17 @@ verification_token = "replace-me"
 encrypt_key = ""
 allowed_user_ids = ["ou_xxx"]
 
+[dingtalk]
+enabled = false
+client_id = "ding_xxx"
+client_secret = "replace-me"
+gateway_token = "replace-me"
+gateway_password = ""
+require_mention = true
+group_policy = "open"
+group_session_scope = "group"
+allowed_user_ids = []
+
 [storage]
 sqlite_path = "data/codex_remote_control.db"
 

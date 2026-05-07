@@ -5,6 +5,12 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from codex_remote_control.config import AppConfig, load_config
+from codex_remote_control.dingtalk import (
+    DingtalkParseError,
+    format_dingtalk_text_response,
+    parse_dingtalk_event,
+    verify_dingtalk_event,
+)
 from codex_remote_control.feishu import FeishuParseError, parse_feishu_event, verify_event
 from codex_remote_control.router import ConversationRouter
 from codex_remote_control.store import TaskStore
@@ -30,5 +36,16 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         if not verified.allowed:
             return {"text": verified.reason}
         return {"text": router.handle(verified.user_id, verified.text)}
+
+    @app.post("/dingtalk/webhook")
+    async def dingtalk_webhook(payload: dict) -> dict[str, object]:
+        try:
+            event = parse_dingtalk_event(payload)
+        except DingtalkParseError as error:
+            return format_dingtalk_text_response(f"invalid dingtalk event: {error}")
+        verified = verify_dingtalk_event(event, app_config)
+        if not verified.allowed:
+            return format_dingtalk_text_response(verified.reason)
+        return format_dingtalk_text_response(router.handle(verified.user_id, verified.text))
 
     return app
