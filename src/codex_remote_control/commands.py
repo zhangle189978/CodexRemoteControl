@@ -16,6 +16,7 @@ class CommandKind(StrEnum):
     RUN_TESTS = "run_tests"
     DIFF = "diff"
     COMMIT = "commit"
+    INVALID = "invalid"
 
 
 @dataclass(frozen=True)
@@ -30,11 +31,17 @@ def parse_message(text: str) -> ParsedCommand:
     if not stripped.startswith("/"):
         return ParsedCommand(kind=CommandKind.CONTINUE, text=stripped)
 
-    name, _, rest = stripped.partition(" ")
-    rest = rest.strip()
+    parts = stripped.split(maxsplit=1)
+    name = parts[0]
+    rest = parts[1].strip() if len(parts) > 1 else ""
     match name:
         case "/新任务":
-            workspace_path, _, goal = rest.partition(" ")
+            workspace_path, has_goal, goal = rest.partition(" ")
+            if not workspace_path or not has_goal or not goal.strip():
+                return ParsedCommand(
+                    kind=CommandKind.INVALID,
+                    text="用法：/新任务 <项目路径> <目标>",
+                )
             return ParsedCommand(
                 kind=CommandKind.NEW_TASK,
                 args={"workspace_path": workspace_path, "goal": goal.strip()},
@@ -42,6 +49,8 @@ def parse_message(text: str) -> ParsedCommand:
         case "/会话":
             return ParsedCommand(kind=CommandKind.SESSIONS)
         case "/切换":
+            if not rest.isdecimal():
+                return ParsedCommand(kind=CommandKind.INVALID, text="用法：/切换 <编号>")
             return ParsedCommand(kind=CommandKind.SWITCH, args={"index": int(rest)})
         case "/状态":
             return ParsedCommand(kind=CommandKind.STATUS)

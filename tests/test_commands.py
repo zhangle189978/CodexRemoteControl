@@ -36,6 +36,13 @@ def test_parse_session_switch() -> None:
     assert command.args == {"index": 2}
 
 
+def test_parse_commands_with_pasted_whitespace() -> None:
+    command = parse_message("/切换\t2")
+
+    assert command.kind is CommandKind.SWITCH
+    assert command.args == {"index": 2}
+
+
 def test_parse_commit_and_confirm() -> None:
     assert parse_message("/提交").kind is CommandKind.COMMIT
     assert parse_message("/确认").kind is CommandKind.CONFIRM
@@ -56,3 +63,13 @@ def test_treat_unknown_slash_command_as_continue() -> None:
     assert command.kind is CommandKind.CONTINUE
     assert command.text == "/未知 做这件事"
     assert command.args == {}
+
+
+def test_malformed_switch_command_is_invalid() -> None:
+    assert parse_message("/切换").kind is CommandKind.INVALID
+    assert parse_message("/切换 abc").kind is CommandKind.INVALID
+
+
+def test_malformed_new_task_command_is_invalid() -> None:
+    assert parse_message("/新任务").kind is CommandKind.INVALID
+    assert parse_message(r"/新任务 C:\Users\89493\Documents\HollyDB").kind is CommandKind.INVALID
