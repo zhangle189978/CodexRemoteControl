@@ -54,6 +54,25 @@ def test_continue_imported_codex_session_uses_exec_resume(tmp_path: Path) -> Non
     assert "从钉钉继续执行" in command
 
 
+def test_continue_imported_codex_session_requires_instruction(tmp_path: Path) -> None:
+    store = TaskStore(":memory:")
+    task = store.create_imported_session_task(
+        user_id="ding_user",
+        title="Desktop handoff",
+        workspace_path=tmp_path,
+        codex_session_id="019e0024-4186-7440-b23b-0185fd8def85",
+        summary_text="用户：历史摘要不能当成新指令",
+    )
+    runner = FakeProcessRunner()
+    adapter = CodexAdapter(command="codex-test", process_runner=runner)
+
+    result = adapter.continue_task(task, "")
+
+    assert "请在 /继续 后写具体指令" in result.summary
+    assert not result.changed
+    assert runner.calls == []
+
+
 def test_continue_non_imported_task_keeps_local_summary() -> None:
     store = TaskStore(":memory:")
     task = store.create_task(

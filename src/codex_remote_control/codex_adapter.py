@@ -30,6 +30,12 @@ class CodexAdapter:
     def continue_task(self, task: Task, instruction: str) -> CodexResult:
         codex_session_id = _codex_session_id(task.summary)
         if codex_session_id:
+            prompt = instruction.strip()
+            if not prompt:
+                return CodexResult(
+                    summary="请在 /继续 后写具体指令，例如：/继续 继续实现并运行测试。",
+                    changed=False,
+                )
             output = self.process_runner(
                 [
                     self.command,
@@ -37,7 +43,7 @@ class CodexAdapter:
                     "resume",
                     "--dangerously-bypass-approvals-and-sandbox",
                     codex_session_id,
-                    instruction or task.last_user_instruction,
+                    prompt,
                 ],
                 task.workspace_path,
             )

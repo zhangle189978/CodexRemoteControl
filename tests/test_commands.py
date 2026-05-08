@@ -70,11 +70,11 @@ def test_parse_import_recent_codex_session_command() -> None:
     assert command.args == {"index": 2}
 
 
-def test_treat_unknown_slash_command_as_continue() -> None:
+def test_unknown_slash_command_is_invalid() -> None:
     command = parse_message("/未知 做这件事")
 
-    assert command.kind is CommandKind.CONTINUE
-    assert command.text == "/未知 做这件事"
+    assert command.kind is CommandKind.INVALID
+    assert command.text == "未知命令：/未知"
     assert command.args == {}
 
 

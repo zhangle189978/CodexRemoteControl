@@ -85,4 +85,4 @@ def parse_message(text: str) -> ParsedCommand:
                 args={"index": int(rest)},
             )
         case _:
-            return ParsedCommand(kind=CommandKind.CONTINUE, text=stripped)
+            return ParsedCommand(kind=CommandKind.INVALID, text=f"未知命令：{name}")
