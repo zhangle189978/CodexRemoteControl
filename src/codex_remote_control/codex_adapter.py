@@ -8,7 +8,9 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
+from codex_remote_control.codex_app_server import CodexAppServerClient
 from codex_remote_control.models import Task
 
 
@@ -18,14 +20,26 @@ class CodexResult:
     changed: bool
 
 
+class AppServerClient(Protocol):
+    def run_turn(self, thread_id: str, instruction: str, cwd: Path) -> str: ...
+
+
 class CodexAdapter:
     def __init__(
         self,
         command: str = "codex",
         process_runner: Callable[[list[str], Path], str] | None = None,
+        app_server_client: AppServerClient | None = None,
     ) -> None:
         self.command = command
         self.process_runner = process_runner or self._run_process
+        self.app_server_client = (
+            app_server_client
+            if app_server_client is not None
+            else CodexAppServerClient(command)
+            if process_runner is None
+            else None
+        )
 
     def continue_task(self, task: Task, instruction: str) -> CodexResult:
         codex_session_id = _codex_session_id(task.summary)
@@ -36,6 +50,16 @@ class CodexAdapter:
                     summary="请在 /继续 后写具体指令，例如：/继续 继续实现并运行测试。",
                     changed=False,
                 )
+            if self.app_server_client is not None:
+                try:
+                    output = self.app_server_client.run_turn(
+                        codex_session_id,
+                        prompt,
+                        task.workspace_path,
+                    )
+                    return CodexResult(summary=output, changed=True)
+                except Exception:
+                    pass
             output = self.process_runner(
                 [
                     self.command,

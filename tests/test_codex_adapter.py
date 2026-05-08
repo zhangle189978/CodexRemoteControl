@@ -15,7 +15,26 @@ class FakeProcessRunner:
         return "Codex finished the remote instruction"
 
 
-def test_continue_imported_codex_session_uses_exec_resume(tmp_path: Path) -> None:
+class FakeAppServerClient:
+    def __init__(self, response: str = "POC app-server completed") -> None:
+        self.response = response
+        self.calls: list[tuple[str, str, Path]] = []
+
+    def run_turn(self, thread_id: str, instruction: str, cwd: Path) -> str:
+        self.calls.append((thread_id, instruction, cwd))
+        return self.response
+
+
+class FailingAppServerClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, Path]] = []
+
+    def run_turn(self, thread_id: str, instruction: str, cwd: Path) -> str:
+        self.calls.append((thread_id, instruction, cwd))
+        raise RuntimeError("app-server unavailable")
+
+
+def _imported_task(tmp_path: Path):
     store = TaskStore(":memory:")
     task = store.create_task(
         user_id="ding_user",
@@ -35,13 +54,44 @@ def test_continue_imported_codex_session_uses_exec_resume(tmp_path: Path) -> Non
             }
         ),
     )
-    task = store.get_task(task.id)
+    return store.get_task(task.id)
+
+
+def test_continue_imported_codex_session_prefers_app_server_thread_turn(tmp_path: Path) -> None:
+    task = _imported_task(tmp_path)
+    process_runner = FakeProcessRunner()
+    app_server = FakeAppServerClient("App-server turn finished")
+    adapter = CodexAdapter(
+        command="codex-test",
+        process_runner=process_runner,
+        app_server_client=app_server,
+    )
+
+    result = adapter.continue_task(task, "从钉钉继续执行")
+
+    assert result.summary == "App-server turn finished"
+    assert app_server.calls == [
+        ("019e0024-4186-7440-b23b-0185fd8def85", "从钉钉继续执行", tmp_path)
+    ]
+    assert process_runner.calls == []
+
+
+def test_continue_imported_codex_session_falls_back_to_exec_resume(tmp_path: Path) -> None:
+    task = _imported_task(tmp_path)
     runner = FakeProcessRunner()
-    adapter = CodexAdapter(command="codex-test", process_runner=runner)
+    app_server = FailingAppServerClient()
+    adapter = CodexAdapter(
+        command="codex-test",
+        process_runner=runner,
+        app_server_client=app_server,
+    )
 
     result = adapter.continue_task(task, "从钉钉继续执行")
 
     assert result.summary == "Codex finished the remote instruction"
+    assert app_server.calls == [
+        ("019e0024-4186-7440-b23b-0185fd8def85", "从钉钉继续执行", tmp_path)
+    ]
     command, cwd = runner.calls[0]
     assert cwd == tmp_path
     assert command[:4] == [

@@ -8,7 +8,7 @@
 - 钉钉 HTTP Webhook 接入。
 - 钉钉 Stream 模式接入，不需要公网隧道。
 - 远程创建、切换、暂停、继续本地任务。
-- 导入最近的 Codex 桌面会话，并用 `codex exec resume <session-id>` 继续原会话。
+- 导入最近的 Codex 桌面会话，并通过 Codex app-server 在原 thread 中继续执行。
 - 查看导入会话的最新进展、尾部事件和命令执行结果。
 - commit 等 release 动作必须二次确认，普通文本不会误触发。
 
@@ -103,6 +103,13 @@ Copy-Item config/local.example.toml config/local.toml
 ```text
 /继续 按方案 A 继续实现，完成后等我确认
 ```
+
+导入的 Codex 会话会优先通过本机 experimental Codex app-server 协议执行：
+
+- 加载原 Codex thread。
+- 把钉钉消息作为同一个 thread 的新 turn 启动。
+- 监听助手回复并回发钉钉。
+- 如果 app-server 不可用，自动回落到 `codex exec resume <session-id> <message>`。
 
 也可以直接发普通文本；只要当前任务没有等待 release 确认，普通文本等价于 `/继续 <文本>`。
 
