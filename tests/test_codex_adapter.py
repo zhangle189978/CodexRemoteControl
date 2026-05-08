@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from codex_remote_control.codex_adapter import CodexAdapter
+from codex_remote_control.codex_adapter import CodexAdapter, _command_for_subprocess
 from codex_remote_control.models import PermissionLevel
 from codex_remote_control.store import TaskStore
 
@@ -70,3 +70,17 @@ def test_continue_non_imported_task_keeps_local_summary() -> None:
 
     assert result.summary == "普通继续"
     assert runner.calls == []
+
+
+def test_windows_cmd_shim_runs_through_cmd_exe() -> None:
+    command = _command_for_subprocess(
+        [r"C:\Users\89493\AppData\Roaming\npm\codex.cmd", "exec", "resume"]
+    )
+
+    assert command == [
+        "cmd.exe",
+        "/c",
+        r"C:\Users\89493\AppData\Roaming\npm\codex.cmd",
+        "exec",
+        "resume",
+    ]

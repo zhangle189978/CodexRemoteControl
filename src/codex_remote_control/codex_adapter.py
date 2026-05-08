@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable
@@ -47,15 +49,19 @@ class CodexAdapter:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "last_message.txt"
             command_with_output = [*command[:4], "-o", str(output_path), *command[4:]]
-            result = subprocess.run(
-                command_with_output,
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                timeout=60 * 60,
-                check=False,
-            )
+            try:
+                result = subprocess.run(
+                    _command_for_subprocess(command_with_output),
+                    cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=60 * 60,
+                    check=False,
+                )
+            except OSError as error:
+                return f"Codex resume failed before start: {error}"
             if output_path.exists():
                 output = output_path.read_text(encoding="utf-8").strip()
                 if output:
@@ -77,3 +83,13 @@ def _codex_session_id(summary: str) -> str:
         return ""
     session_id = value.get("codex_session_id")
     return session_id if isinstance(session_id, str) else ""
+
+
+def _command_for_subprocess(command: list[str]) -> list[str]:
+    if not command:
+        return command
+    executable = shutil.which(command[0]) or command[0]
+    suffix = Path(executable).suffix.lower()
+    if os.name == "nt" and suffix in {".cmd", ".bat"}:
+        return ["cmd.exe", "/c", executable, *command[1:]]
+    return [executable, *command[1:]]
