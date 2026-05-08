@@ -41,15 +41,23 @@ For imported Codex sessions:
 -> create local task with source=codex_session
 
 /继续 <instruction>
--> codex app-server --listen ws://127.0.0.1:<free-port>
+-> inject text into the active Codex Desktop GUI
+-> wait for the next assistant reply or Codex error in the rollout file
+-> reply to chat
+```
+
+If GUI injection cannot be used, the adapter falls back to the experimental
+app-server path:
+
+```text
+codex app-server --listen ws://127.0.0.1:<free-port>
 -> initialize
 -> thread/resume
 -> turn/start
 -> collect assistant deltas, completed messages, or error notifications
--> reply to chat
 ```
 
-If app-server cannot be used, the adapter falls back to:
+If app-server cannot be used, the adapter falls back again to:
 
 ```text
 codex exec resume <session-id> <instruction>
@@ -57,15 +65,17 @@ codex exec resume <session-id> <instruction>
 
 ## Desktop UI Behavior
 
-The bridge currently starts its own short-lived app-server process. That process
-can resume and write the same thread history, but it is not the same app-server
-instance used by the already-open Codex desktop UI.
+GUI injection targets the currently visible Codex Desktop window. The Codex
+window must be open, foregroundable, idle, and already on the session that the
+remote user wants to control.
 
 Consequence:
 
-- The mobile turn is persisted to the same session record.
-- `/进展`, `/尾巴`, and `/刷新` can read the new record from DingTalk.
-- The open desktop UI may not live-update with that externally written turn.
+- The mobile turn runs in the visible desktop session when injection succeeds.
+- `/进展`, `/尾巴`, and `/刷新` can read the resulting rollout records from
+  DingTalk.
+- If injection fails, app-server and CLI resume fallbacks may persist to the same
+  session record without live-updating the already-open desktop UI.
 
 This is a Codex desktop integration boundary, not a DingTalk routing issue.
 

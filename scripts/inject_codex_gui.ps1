@@ -193,12 +193,10 @@ if ($FocusOnly) {
     exit 0
 }
 
-$previousClipboard = ""
-$hadTextClipboard = $false
+$previousClipboardData = $null
 try {
-    if ([System.Windows.Forms.Clipboard]::ContainsText()) {
-        $previousClipboard = [System.Windows.Forms.Clipboard]::GetText()
-        $hadTextClipboard = $true
+    if ($RestoreClipboard) {
+        $previousClipboardData = [System.Windows.Forms.Clipboard]::GetDataObject()
     }
 
     if ($InputMode -eq "Clipboard") {
@@ -246,8 +244,8 @@ try {
 }
 finally {
     Start-Sleep -Milliseconds 1000
-    if ($RestoreClipboard -and $hadTextClipboard) {
-        [System.Windows.Forms.Clipboard]::SetText($previousClipboard)
+    if ($RestoreClipboard -and $null -ne $previousClipboardData) {
+        [System.Windows.Forms.Clipboard]::SetDataObject($previousClipboardData, $true)
     }
 }
 
