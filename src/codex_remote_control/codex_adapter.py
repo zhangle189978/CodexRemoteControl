@@ -15,6 +15,8 @@ from codex_remote_control.codex_app_server import (
     CodexAppServerTurnFailed,
     CodexAppServerUnavailable,
 )
+from codex_remote_control.codex_gui import CodexGuiClient
+from codex_remote_control.codex_sessions import CodexSessionSource
 from codex_remote_control.models import Task
 
 
@@ -28,15 +30,47 @@ class AppServerClient(Protocol):
     def run_turn(self, thread_id: str, instruction: str, cwd: Path) -> str: ...
 
 
+class GuiClient(Protocol):
+    def run_turn(self, thread_id: str, instruction: str, cwd: Path) -> str: ...
+
+
+class SessionProgressSource(Protocol):
+    def count_key_events(self, session_id: str) -> int: ...
+
+    def wait_for_next_assistant_reply(
+        self,
+        session_id: str,
+        after_event_count: int,
+        timeout: float = 180.0,
+        interval: float = 1.0,
+    ) -> str: ...
+
+
 class CodexAdapter:
     def __init__(
         self,
         command: str = "codex",
         process_runner: Callable[[list[str], Path], str] | None = None,
+        gui_client: GuiClient | None = None,
         app_server_client: AppServerClient | None = None,
+        session_source: SessionProgressSource | None = None,
     ) -> None:
         self.command = command
         self.process_runner = process_runner or self._run_process
+        self.gui_client = (
+            gui_client
+            if gui_client is not None
+            else CodexGuiClient()
+            if process_runner is None
+            else None
+        )
+        self.session_source = (
+            session_source
+            if session_source is not None
+            else CodexSessionSource()
+            if process_runner is None
+            else None
+        )
         self.app_server_client = (
             app_server_client
             if app_server_client is not None
@@ -54,6 +88,36 @@ class CodexAdapter:
                     summary="请在 /继续 后写具体指令，例如：/继续 继续实现并运行测试。",
                     changed=False,
                 )
+            if self.gui_client is not None:
+                try:
+                    event_count = (
+                        self.session_source.count_key_events(codex_session_id)
+                        if self.session_source is not None
+                        else 0
+                    )
+                    output = self.gui_client.run_turn(
+                        codex_session_id,
+                        prompt,
+                        task.workspace_path,
+                    )
+                except Exception:
+                    pass
+                else:
+                    if self.session_source is not None:
+                        try:
+                            reply = self.session_source.wait_for_next_assistant_reply(
+                                codex_session_id,
+                                after_event_count=event_count,
+                            )
+                        except Exception:
+                            reply = ""
+                        if reply:
+                            return CodexResult(summary=reply, changed=True)
+                        output = (
+                            f"{output}\n\n已注入当前 Codex GUI，但还没有读到新的助手回复。"
+                            "请稍后使用 /进展 或 /尾巴 20 查看。"
+                        )
+                    return CodexResult(summary=output, changed=True)
             if self.app_server_client is not None:
                 try:
                     output = self.app_server_client.run_turn(

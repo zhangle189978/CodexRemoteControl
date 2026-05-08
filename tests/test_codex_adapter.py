@@ -29,6 +29,47 @@ class FakeAppServerClient:
         return self.response
 
 
+class FakeGuiClient:
+    def __init__(self, response: str = "Codex GUI submitted text") -> None:
+        self.response = response
+        self.calls: list[tuple[str, str, Path]] = []
+
+    def run_turn(self, thread_id: str, instruction: str, cwd: Path) -> str:
+        self.calls.append((thread_id, instruction, cwd))
+        return self.response
+
+
+class FailingGuiClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, Path]] = []
+
+    def run_turn(self, thread_id: str, instruction: str, cwd: Path) -> str:
+        self.calls.append((thread_id, instruction, cwd))
+        raise RuntimeError("gui unavailable")
+
+
+class FakeSessionSource:
+    def __init__(self, reply: str = "") -> None:
+        self.reply = reply
+        self.count_calls: list[str] = []
+        self.wait_calls: list[tuple[str, int]] = []
+
+    def count_key_events(self, session_id: str) -> int:
+        self.count_calls.append(session_id)
+        return 3
+
+    def wait_for_next_assistant_reply(
+        self,
+        session_id: str,
+        after_event_count: int,
+        timeout: float = 180.0,
+        interval: float = 1.0,
+    ) -> str:
+        del timeout, interval
+        self.wait_calls.append((session_id, after_event_count))
+        return self.reply
+
+
 class FailingAppServerClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, Path]] = []
@@ -87,6 +128,71 @@ def test_continue_imported_codex_session_prefers_app_server_thread_turn(tmp_path
         ("019e0024-4186-7440-b23b-0185fd8def85", "从钉钉继续执行", tmp_path)
     ]
     assert process_runner.calls == []
+
+
+def test_continue_imported_codex_session_prefers_gui_injection(tmp_path: Path) -> None:
+    task = _imported_task(tmp_path)
+    process_runner = FakeProcessRunner()
+    gui = FakeGuiClient("GUI handoff submitted")
+    app_server = FakeAppServerClient("App-server turn finished")
+    adapter = CodexAdapter(
+        command="codex-test",
+        process_runner=process_runner,
+        gui_client=gui,
+        app_server_client=app_server,
+    )
+
+    result = adapter.continue_task(task, "从钉钉交给 GUI 执行")
+
+    assert result.summary == "GUI handoff submitted"
+    assert gui.calls == [
+        ("019e0024-4186-7440-b23b-0185fd8def85", "从钉钉交给 GUI 执行", tmp_path)
+    ]
+    assert app_server.calls == []
+    assert process_runner.calls == []
+
+
+def test_continue_imported_codex_session_returns_gui_assistant_reply(tmp_path: Path) -> None:
+    task = _imported_task(tmp_path)
+    process_runner = FakeProcessRunner()
+    gui = FakeGuiClient("GUI handoff submitted")
+    session_source = FakeSessionSource("助手：GUI_POC_OK")
+    adapter = CodexAdapter(
+        command="codex-test",
+        process_runner=process_runner,
+        gui_client=gui,
+        session_source=session_source,
+    )
+
+    result = adapter.continue_task(task, "请只回复 GUI_POC_OK")
+
+    assert result.summary == "助手：GUI_POC_OK"
+    assert session_source.count_calls == ["019e0024-4186-7440-b23b-0185fd8def85"]
+    assert session_source.wait_calls == [("019e0024-4186-7440-b23b-0185fd8def85", 3)]
+    assert process_runner.calls == []
+
+
+def test_continue_imported_codex_session_falls_back_when_gui_unavailable(tmp_path: Path) -> None:
+    task = _imported_task(tmp_path)
+    process_runner = FakeProcessRunner()
+    gui = FailingGuiClient()
+    app_server = FakeAppServerClient("App-server turn finished")
+    adapter = CodexAdapter(
+        command="codex-test",
+        process_runner=process_runner,
+        gui_client=gui,
+        app_server_client=app_server,
+    )
+
+    result = adapter.continue_task(task, "从钉钉交给 GUI 执行")
+
+    assert result.summary == "App-server turn finished"
+    assert gui.calls == [
+        ("019e0024-4186-7440-b23b-0185fd8def85", "从钉钉交给 GUI 执行", tmp_path)
+    ]
+    assert app_server.calls == [
+        ("019e0024-4186-7440-b23b-0185fd8def85", "从钉钉交给 GUI 执行", tmp_path)
+    ]
 
 
 def test_continue_imported_codex_session_falls_back_to_exec_resume(tmp_path: Path) -> None:

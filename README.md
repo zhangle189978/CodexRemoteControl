@@ -13,30 +13,23 @@ instructions, and confirm guarded actions.
 - DingTalk Stream mode, so local development does not need a public tunnel.
 - Task creation, switching, pausing, continuing, diff, tests, and guarded commit.
 - Import recent Codex desktop sessions from `~/.codex`.
-- Continue imported Codex sessions through the experimental Codex app-server.
+- Continue imported Codex sessions by injecting text into the active Codex
+  Desktop GUI, with app-server and CLI resume as fallbacks.
 - Read imported session progress, tail events, assistant replies, and command
   results from Codex rollout records.
 - Require explicit confirmation for release actions such as commit.
 
 ## Current Limitation
 
-For imported Codex desktop sessions, `/继续 ...` starts a new turn against the
-same Codex thread record. The message is persisted into the same rollout file,
-but the currently open Codex desktop UI does not live-refresh external writes.
+For imported Codex desktop sessions, `/继续 ...` now prefers GUI injection. The
+Codex Desktop window must be open, visible, idle, and on the session you want to
+control. If GUI injection cannot run, the bridge falls back to the experimental
+app-server path, then to CLI resume.
 
-Observed behavior:
-
-- Mobile command is recorded in the Codex thread history.
-- DingTalk can read progress through `/进展`, `/尾巴 20`, or `/刷新`.
-- The already-open desktop UI may not display that mobile turn until the app
-  reloads or the session is reopened.
-- If Codex reports `context window exceeded`, the bridge now returns that error
-  instead of silently hanging.
-
-True live injection into the visible desktop UI requires either Codex desktop to
-connect to the same long-lived app-server, or a separate UI automation layer that
-types into the desktop input box. This repository currently uses the safer
-app-server/session-record approach.
+GUI injection controls the current visible desktop session. After injecting a
+message, the bridge waits for the next assistant reply or Codex error recorded
+in that session and returns it to DingTalk. If no reply is recorded before the
+wait timeout, use `/进展` or `/尾巴 20` to inspect the resulting rollout events.
 
 ## Install
 
@@ -133,6 +126,30 @@ If no DingTalk user has contacted the service yet:
 
 ```powershell
 .\scripts\adopt_current_codex_session.ps1 -UserId <dingtalk-sender-id>
+```
+
+## GUI Injection
+
+To test GUI handoff manually, keep the Codex Desktop window open and idle:
+
+```powershell
+.\scripts\inject_codex_gui.ps1 -ListWindows
+.\scripts\inject_codex_gui.ps1 "GUI_POC_OK" -NoSubmit -InputMode SendKeys
+.\scripts\inject_codex_gui.ps1 "请只回复 GUI_POC_OK" -InputMode SendKeys
+```
+
+Expected result:
+
+- The text is typed into the active Codex Desktop input.
+- The send button is clicked automatically.
+- The current GUI conversation executes the message.
+- The assistant reply appears in the GUI and can later be read from the rollout
+  file for DingTalk reply forwarding.
+
+Use `-NoSubmit` to type without clicking send:
+
+```powershell
+.\scripts\inject_codex_gui.ps1 "draft text" -NoSubmit
 ```
 
 ## Commands

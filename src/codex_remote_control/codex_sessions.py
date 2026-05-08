@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -61,6 +62,25 @@ class CodexSessionSource:
 
     def get_tail(self, session_id: str, limit: int = 20) -> str:
         return self.get_progress(session_id, limit=limit)
+
+    def count_key_events(self, session_id: str) -> int:
+        return len(self._read_key_events(session_id))
+
+    def wait_for_next_assistant_reply(
+        self,
+        session_id: str,
+        after_event_count: int,
+        timeout: float = 180.0,
+        interval: float = 1.0,
+    ) -> str:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() <= deadline:
+            events = self._read_key_events(session_id)
+            for event in events[max(0, after_event_count) :]:
+                if event.startswith("助手：") or event.startswith("Codex error:"):
+                    return event
+            time.sleep(interval)
+        return ""
 
     def _build_session(self, row: dict[str, Any]) -> CodexSession:
         session_id = str(row["id"])
