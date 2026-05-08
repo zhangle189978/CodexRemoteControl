@@ -4,7 +4,7 @@
 
 **Goal:** Let DingTalk import and continue recent Codex desktop sessions, and let the PC side expose the latest Codex session into the remote task list.
 
-**Architecture:** Add a Codex session reader that parses `~/.codex/session_index.jsonl` and matching rollout files into lightweight handoff records. Extend the command parser/router/store with remote user tracking and task creation from imported Codex sessions. Add a PowerShell script for PC-side adoption that uses the most recent remote user when no user id is supplied.
+**Architecture:** Add a Codex session reader that parses `~/.codex/session_index.jsonl` and matching rollout files into lightweight handoff records. Extend the command parser/router/store with remote user tracking and task creation from imported Codex sessions. Add DingTalk commands to inspect imported session progress from rollout records. Add a PowerShell script for PC-side adoption that uses the most recent remote user when no user id is supplied.
 
 **Tech Stack:** Python 3.12, FastAPI service, sqlite3 store, pytest, PowerShell helper scripts.
 
@@ -39,6 +39,7 @@
 
 - [x] Add `/最近会话` command.
 - [x] Add `/导入最近 [编号]` command.
+- [x] Add `/进展`, `/刷新`, and `/尾巴 [数量]` commands for imported Codex sessions.
 - [x] Route commands through `CodexSessionSource` and create switchable tasks.
 
 ### Task 4: PC-Side Adoption Script
@@ -55,6 +56,6 @@
 **Files:**
 - Modify: `README.md`
 
-- [x] Document `/最近会话`, `/导入最近 [编号]`, and PC-side adoption.
+- [x] Document `/最近会话`, `/导入最近 [编号]`, progress inspection, and PC-side adoption.
 - [x] Run pytest, ruff, node syntax check, and git diff checks.
-- [ ] Commit the feature.
+- [x] Commit the feature.
