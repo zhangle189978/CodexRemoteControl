@@ -37,6 +37,8 @@ class GuiClient(Protocol):
 class SessionProgressSource(Protocol):
     def count_key_events(self, session_id: str) -> int: ...
 
+    def count_wait_events(self, session_id: str) -> int: ...
+
     def wait_for_next_assistant_reply(
         self,
         session_id: str,
@@ -91,7 +93,7 @@ class CodexAdapter:
             if self.gui_client is not None:
                 try:
                     event_count = (
-                        self.session_source.count_key_events(codex_session_id)
+                        self.session_source.count_wait_events(codex_session_id)
                         if self.session_source is not None
                         else 0
                     )

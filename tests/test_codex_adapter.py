@@ -58,6 +58,10 @@ class FakeSessionSource:
         self.count_calls.append(session_id)
         return 3
 
+    def count_wait_events(self, session_id: str) -> int:
+        self.count_calls.append(session_id)
+        return 3
+
     def wait_for_next_assistant_reply(
         self,
         session_id: str,

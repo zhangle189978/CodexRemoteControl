@@ -188,6 +188,72 @@ def test_get_progress_includes_codex_error_events(tmp_path: Path) -> None:
     assert "Codex error: Codex ran out of room" in progress
 
 
+def test_wait_for_next_assistant_reply_returns_task_complete_message(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    _write_jsonl(
+        codex_home / "sessions" / "2026" / "05" / "08" / "rollout-session-wait.jsonl",
+        [
+            {
+                "timestamp": "2026-05-08T01:00:00Z",
+                "type": "session_meta",
+                "payload": {"id": "session-wait", "cwd": str(tmp_path / "Repo")},
+            },
+            {
+                "timestamp": "2026-05-08T01:01:00Z",
+                "type": "event_msg",
+                "payload": {"type": "agent_message", "message": "我先看一下。"},
+            },
+            {
+                "timestamp": "2026-05-08T01:02:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "task_complete",
+                    "last_agent_message": "最终结论：当前分支干净。",
+                },
+            },
+        ],
+    )
+
+    reply = CodexSessionSource(codex_home).wait_for_next_assistant_reply(
+        "session-wait",
+        after_event_count=0,
+        timeout=0,
+    )
+
+    assert reply == "助手：最终结论：当前分支干净。"
+
+
+def test_wait_for_next_assistant_reply_falls_back_to_latest_assistant_on_timeout(
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    _write_jsonl(
+        codex_home / "sessions" / "2026" / "05" / "08" / "rollout-session-timeout.jsonl",
+        [
+            {
+                "timestamp": "2026-05-08T01:00:00Z",
+                "type": "session_meta",
+                "payload": {"id": "session-timeout", "cwd": str(tmp_path / "Repo")},
+            },
+            {
+                "timestamp": "2026-05-08T01:01:00Z",
+                "type": "event_msg",
+                "payload": {"type": "agent_message", "message": "仍在处理。"},
+            },
+        ],
+    )
+
+    reply = CodexSessionSource(codex_home).wait_for_next_assistant_reply(
+        "session-timeout",
+        after_event_count=0,
+        timeout=0,
+    )
+
+    assert reply == "助手：仍在处理。"
+
+
 def test_get_tail_limits_recent_key_events(tmp_path: Path) -> None:
     codex_home = tmp_path / ".codex"
     codex_home.mkdir()

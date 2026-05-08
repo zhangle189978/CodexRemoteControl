@@ -66,6 +66,9 @@ class CodexSessionSource:
     def count_key_events(self, session_id: str) -> int:
         return len(self._read_key_events(session_id))
 
+    def count_wait_events(self, session_id: str) -> int:
+        return len(self._read_wait_events(session_id))
+
     def wait_for_next_assistant_reply(
         self,
         session_id: str,
@@ -74,13 +77,19 @@ class CodexSessionSource:
         interval: float = 1.0,
     ) -> str:
         deadline = time.monotonic() + timeout
-        while time.monotonic() <= deadline:
-            events = self._read_key_events(session_id)
-            for event in events[max(0, after_event_count) :]:
-                if event.startswith("助手：") or event.startswith("Codex error:"):
-                    return event
+        latest_assistant_message = ""
+        while True:
+            events = self._read_wait_events(session_id)
+            for event_type, event_text in events[max(0, after_event_count) :]:
+                if event_type == "error":
+                    return event_text
+                if event_type == "assistant":
+                    latest_assistant_message = event_text
+                if event_type == "complete":
+                    return event_text
+            if time.monotonic() >= deadline:
+                return latest_assistant_message
             time.sleep(interval)
-        return ""
 
     def _build_session(self, row: dict[str, Any]) -> CodexSession:
         session_id = str(row["id"])
@@ -189,6 +198,17 @@ class CodexSessionSource:
                 events.append(event)
         return events
 
+    def _read_wait_events(self, session_id: str) -> list[tuple[str, str]]:
+        rollout_path = self._find_rollout_path(session_id)
+        if rollout_path is None:
+            return []
+        events: list[tuple[str, str]] = []
+        for row in _read_jsonl(rollout_path):
+            event = _extract_wait_event(row)
+            if event is not None:
+                events.append(event)
+        return events
+
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -278,6 +298,28 @@ def _extract_key_event(row: dict[str, Any]) -> str:
             return f"{first_line}\n{_truncate(output, 800)}"
         return first_line
     return ""
+
+
+def _extract_wait_event(row: dict[str, Any]) -> tuple[str, str] | None:
+    row_type = row.get("type")
+    payload = row.get("payload")
+    if row_type == "response_item":
+        message_text = _extract_message_text(payload)
+        if message_text.startswith("助手："):
+            return ("assistant", _truncate(message_text, 1000))
+        return None
+    if row_type != "event_msg" or not isinstance(payload, dict):
+        return None
+    event_type = payload.get("type")
+    if event_type == "agent_message" and isinstance(payload.get("message"), str):
+        return ("assistant", f"助手：{_truncate(payload['message'].strip(), 1000)}")
+    if event_type == "error" and isinstance(payload.get("message"), str):
+        return ("error", f"Codex error: {_truncate(payload['message'].strip(), 1000)}")
+    if event_type == "task_complete" and isinstance(payload.get("last_agent_message"), str):
+        message = payload["last_agent_message"].strip()
+        if message:
+            return ("complete", f"助手：{_truncate(message, 1000)}")
+    return None
 
 
 def _format_command(command: object) -> str:
