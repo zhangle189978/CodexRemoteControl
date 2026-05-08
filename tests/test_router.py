@@ -19,6 +19,8 @@ def _router(tmp_path: Path) -> tuple[ConversationRouter, TaskStore]:
 class _FakeCodexSessions:
     def __init__(self, sessions: list[CodexSession]) -> None:
         self.sessions = sessions
+        self.progress_by_id: dict[str, str] = {}
+        self.tail_by_id: dict[tuple[str, int], str] = {}
 
     def list_recent(self, limit: int = 5) -> list[CodexSession]:
         return self.sessions[:limit]
@@ -27,6 +29,12 @@ class _FakeCodexSessions:
         if index < 1 or index > len(self.sessions):
             return None
         return self.sessions[index - 1]
+
+    def get_progress(self, session_id: str, limit: int = 12) -> str:
+        return self.progress_by_id.get(session_id, "")
+
+    def get_tail(self, session_id: str, limit: int = 20) -> str:
+        return self.tail_by_id.get((session_id, limit), "")
 
 
 def test_new_task_sets_current_task(tmp_path: Path) -> None:
@@ -193,3 +201,95 @@ def test_import_recent_codex_session_rejects_unknown_index(tmp_path: Path) -> No
     response = router.handle("ou_allowed", "/导入最近 99")
 
     assert response == "没有找到这个编号的 Codex 会话，请先使用 /最近会话 查看。"
+
+
+def test_progress_reads_imported_codex_session(tmp_path: Path) -> None:
+    workspace = tmp_path / "Repo"
+    workspace.mkdir()
+    config = AppConfig.for_tests(workspace_roots=[workspace])
+    store = TaskStore(":memory:")
+    fake_sessions = _FakeCodexSessions(
+        [
+            CodexSession(
+                session_id="019e0000-aaaa-bbbb-cccc-123456789abc",
+                thread_name="Build handoff",
+                updated_at=datetime(2026, 5, 7, 9, 0, tzinfo=UTC),
+                workspace_path=workspace,
+                summary="初始摘要",
+            )
+        ]
+    )
+    fake_sessions.progress_by_id[
+        "019e0000-aaaa-bbbb-cccc-123456789abc"
+    ] = "助手：测试通过，等待你确认。"
+    router = ConversationRouter(config, store, codex_sessions=fake_sessions)
+
+    router.handle("ou_allowed", "/导入最近")
+    response = router.handle("ou_allowed", "/进展")
+
+    assert response == "助手：测试通过，等待你确认。"
+
+
+def test_tail_reads_imported_codex_session_with_limit(tmp_path: Path) -> None:
+    workspace = tmp_path / "Repo"
+    workspace.mkdir()
+    config = AppConfig.for_tests(workspace_roots=[workspace])
+    store = TaskStore(":memory:")
+    fake_sessions = _FakeCodexSessions(
+        [
+            CodexSession(
+                session_id="019e0000-aaaa-bbbb-cccc-123456789abc",
+                thread_name="Build handoff",
+                updated_at=datetime(2026, 5, 7, 9, 0, tzinfo=UTC),
+                workspace_path=workspace,
+                summary="初始摘要",
+            )
+        ]
+    )
+    fake_sessions.tail_by_id[
+        ("019e0000-aaaa-bbbb-cccc-123456789abc", 3)
+    ] = "最近 3 条"
+    router = ConversationRouter(config, store, codex_sessions=fake_sessions)
+
+    router.handle("ou_allowed", "/导入最近")
+    response = router.handle("ou_allowed", "/尾巴 3")
+
+    assert response == "最近 3 条"
+
+
+def test_refresh_updates_imported_codex_session_summary(tmp_path: Path) -> None:
+    workspace = tmp_path / "Repo"
+    workspace.mkdir()
+    config = AppConfig.for_tests(workspace_roots=[workspace])
+    store = TaskStore(":memory:")
+    fake_sessions = _FakeCodexSessions(
+        [
+            CodexSession(
+                session_id="019e0000-aaaa-bbbb-cccc-123456789abc",
+                thread_name="Build handoff",
+                updated_at=datetime(2026, 5, 7, 9, 0, tzinfo=UTC),
+                workspace_path=workspace,
+                summary="初始摘要",
+            )
+        ]
+    )
+    fake_sessions.progress_by_id[
+        "019e0000-aaaa-bbbb-cccc-123456789abc"
+    ] = "助手：最新进展"
+    router = ConversationRouter(config, store, codex_sessions=fake_sessions)
+
+    router.handle("ou_allowed", "/导入最近")
+    response = router.handle("ou_allowed", "/刷新")
+
+    current = store.get_current_task("ou_allowed")
+    assert response == "助手：最新进展"
+    assert current is not None
+    assert "助手：最新进展" in current.summary
+
+
+def test_progress_without_imported_session_explains_next_step(tmp_path: Path) -> None:
+    router, _store = _router(tmp_path)
+
+    response = router.handle("ou_allowed", "/进展")
+
+    assert "/导入最近" in response

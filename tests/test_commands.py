@@ -52,6 +52,8 @@ def test_parse_commit_and_confirm() -> None:
 def test_parse_simple_control_commands() -> None:
     assert parse_message("/会话").kind is CommandKind.SESSIONS
     assert parse_message("/状态").kind is CommandKind.STATUS
+    assert parse_message("/进展").kind is CommandKind.PROGRESS
+    assert parse_message("/刷新").kind is CommandKind.REFRESH
     assert parse_message("/暂停").kind is CommandKind.PAUSE
     assert parse_message("/运行测试").kind is CommandKind.RUN_TESTS
     assert parse_message("/差异").kind is CommandKind.DIFF
@@ -68,6 +70,18 @@ def test_parse_import_recent_codex_session_command() -> None:
 
     assert command.kind is CommandKind.IMPORT_RECENT_CODEX_SESSION
     assert command.args == {"index": 2}
+
+
+def test_parse_tail_command() -> None:
+    command = parse_message("/尾巴")
+
+    assert command.kind is CommandKind.TAIL
+    assert command.args == {"limit": 20}
+
+    command = parse_message("/尾巴 8")
+
+    assert command.kind is CommandKind.TAIL
+    assert command.args == {"limit": 8}
 
 
 def test_unknown_slash_command_is_invalid() -> None:
@@ -90,3 +104,8 @@ def test_malformed_new_task_command_is_invalid() -> None:
 
 def test_malformed_import_recent_codex_session_is_invalid() -> None:
     assert parse_message("/导入最近 abc").kind is CommandKind.INVALID
+
+
+def test_malformed_tail_command_is_invalid() -> None:
+    assert parse_message("/尾巴 abc").kind is CommandKind.INVALID
+    assert parse_message("/尾巴 0").kind is CommandKind.INVALID

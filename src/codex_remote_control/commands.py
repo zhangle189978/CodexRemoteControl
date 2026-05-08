@@ -9,6 +9,9 @@ class CommandKind(StrEnum):
     SESSIONS = "sessions"
     SWITCH = "switch"
     STATUS = "status"
+    PROGRESS = "progress"
+    REFRESH = "refresh"
+    TAIL = "tail"
     CONTINUE = "continue"
     PAUSE = "pause"
     CONFIRM = "confirm"
@@ -56,6 +59,16 @@ def parse_message(text: str) -> ParsedCommand:
             return ParsedCommand(kind=CommandKind.SWITCH, args={"index": int(rest)})
         case "/状态":
             return ParsedCommand(kind=CommandKind.STATUS)
+        case "/进展":
+            return ParsedCommand(kind=CommandKind.PROGRESS)
+        case "/刷新":
+            return ParsedCommand(kind=CommandKind.REFRESH)
+        case "/尾巴":
+            if not rest:
+                return ParsedCommand(kind=CommandKind.TAIL, args={"limit": 20})
+            if not rest.isdecimal() or int(rest) < 1:
+                return ParsedCommand(kind=CommandKind.INVALID, text="用法：/尾巴 [数量]")
+            return ParsedCommand(kind=CommandKind.TAIL, args={"limit": int(rest)})
         case "/继续":
             return ParsedCommand(kind=CommandKind.CONTINUE, text=rest)
         case "/暂停":

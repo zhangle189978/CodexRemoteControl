@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from codex_remote_control.codex_sessions import CodexSession, CodexSessionSource
@@ -37,6 +38,12 @@ class ConversationRouter:
                 return self._switch(user_id, int(command.args["index"]))
             case CommandKind.STATUS:
                 return self.runner.status(user_id)
+            case CommandKind.PROGRESS:
+                return self._codex_session_progress(user_id)
+            case CommandKind.REFRESH:
+                return self._refresh_codex_session(user_id)
+            case CommandKind.TAIL:
+                return self._codex_session_tail(user_id, int(command.args["limit"]))
             case CommandKind.CONTINUE:
                 current = self.store.get_current_task(user_id)
                 if current and current.status is TaskStatus.WAITING_CONFIRMATION:
@@ -129,6 +136,53 @@ class ConversationRouter:
             summary_text=session.summary or f"接管 Codex 会话：{session.thread_name}",
         )
         return f"已导入 Codex 会话 #{task.id}：{task.title} (...{session.short_id})"
+
+    def _codex_session_progress(self, user_id: str) -> str:
+        session_id = self._current_codex_session_id(user_id)
+        if session_id is None:
+            return "当前任务不是导入的 Codex 会话，请先使用 /最近会话 和 /导入最近 [编号]。"
+        return self.codex_sessions.get_progress(session_id, limit=12)
+
+    def _codex_session_tail(self, user_id: str, limit: int) -> str:
+        session_id = self._current_codex_session_id(user_id)
+        if session_id is None:
+            return "当前任务不是导入的 Codex 会话，请先使用 /最近会话 和 /导入最近 [编号]。"
+        return self.codex_sessions.get_tail(session_id, limit=limit)
+
+    def _refresh_codex_session(self, user_id: str) -> str:
+        task = self.store.get_current_task(user_id)
+        session_id = self._codex_session_id_from_task_summary(task.summary if task else "")
+        if task is None or session_id is None:
+            return "当前任务不是导入的 Codex 会话，请先使用 /最近会话 和 /导入最近 [编号]。"
+        progress = self.codex_sessions.get_progress(session_id, limit=12)
+        summary = json.dumps(
+            {
+                "source": "codex_session",
+                "codex_session_id": session_id,
+                "summary": progress,
+            },
+            ensure_ascii=False,
+        )
+        self.store.set_status(task.id, task.status, summary=summary)
+        return progress
+
+    def _current_codex_session_id(self, user_id: str) -> str | None:
+        task = self.store.get_current_task(user_id)
+        if task is None:
+            return None
+        return self._codex_session_id_from_task_summary(task.summary)
+
+    def _codex_session_id_from_task_summary(self, summary: str) -> str | None:
+        try:
+            payload = json.loads(summary)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("source") != "codex_session":
+            return None
+        session_id = payload.get("codex_session_id")
+        return session_id if isinstance(session_id, str) and session_id else None
 
     def _workspace_for_session(self, session: CodexSession) -> Path:
         if session.workspace_path is not None:

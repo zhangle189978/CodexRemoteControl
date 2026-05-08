@@ -111,6 +111,104 @@ def test_summary_includes_recent_user_and_assistant_messages(tmp_path: Path) -> 
     assert "助手：使用 /导入最近 1。" in session.summary
 
 
+def test_get_progress_includes_recent_messages_and_tool_outputs(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    _write_jsonl(
+        codex_home / "sessions" / "2026" / "05" / "08" / "rollout-session-progress.jsonl",
+        [
+            {
+                "timestamp": "2026-05-08T01:00:00Z",
+                "type": "session_meta",
+                "payload": {"id": "session-progress", "cwd": str(tmp_path / "Repo")},
+            },
+            {
+                "timestamp": "2026-05-08T01:01:00Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "继续实现进展查看"}],
+                },
+            },
+            {
+                "timestamp": "2026-05-08T01:02:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "exec_command_end",
+                    "command": ["pytest", "-q"],
+                    "exit_code": 0,
+                    "aggregated_output": "80 passed in 4.09s",
+                },
+            },
+            {
+                "timestamp": "2026-05-08T01:03:00Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "测试通过，等待你确认提交。"}],
+                },
+            },
+        ],
+    )
+
+    progress = CodexSessionSource(codex_home).get_progress("session-progress", limit=5)
+
+    assert "用户：继续实现进展查看" in progress
+    assert "命令完成：pytest -q -> 0" in progress
+    assert "80 passed" in progress
+    assert "助手：测试通过，等待你确认提交。" in progress
+
+
+def test_get_tail_limits_recent_key_events(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    _write_jsonl(
+        codex_home / "sessions" / "2026" / "05" / "08" / "rollout-session-tail.jsonl",
+        [
+            {
+                "timestamp": "2026-05-08T01:00:00Z",
+                "type": "session_meta",
+                "payload": {"id": "session-tail", "cwd": str(tmp_path / "Repo")},
+            },
+            {
+                "timestamp": "2026-05-08T01:01:00Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "第一条"}],
+                },
+            },
+            {
+                "timestamp": "2026-05-08T01:02:00Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "第二条"}],
+                },
+            },
+            {
+                "timestamp": "2026-05-08T01:03:00Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "第三条"}],
+                },
+            },
+        ],
+    )
+
+    tail = CodexSessionSource(codex_home).get_tail("session-tail", limit=2)
+
+    assert "第一条" not in tail
+    assert "助手：第二条" in tail
+    assert "用户：第三条" in tail
+
+
 def test_get_by_index_uses_one_based_recent_order(tmp_path: Path) -> None:
     codex_home = tmp_path / ".codex"
     codex_home.mkdir()

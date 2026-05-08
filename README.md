@@ -87,6 +87,18 @@ are resumed with `codex exec resume <session-id> <message>`, so the work
 continues against the original Codex session record and the final response is
 sent back to DingTalk.
 
+You can inspect the imported Codex desktop session from DingTalk:
+
+```text
+/进展
+/刷新
+/尾巴 20
+```
+
+`/进展` reads the latest useful messages and command results from the Codex
+session record. `/刷新` does the same and stores that latest progress back into
+the imported task summary. `/尾巴 [数量]` shows the last N key events.
+
 From the PC side, expose the latest Codex desktop session to the last DingTalk
 user that messaged the bridge:
 
@@ -109,6 +121,9 @@ If no DingTalk user has messaged the bridge yet, pass the user id explicitly:
 /导入最近 [编号]
 /切换 <编号>
 /状态
+/进展
+/刷新
+/尾巴 [数量]
 /继续 <补充指令>
 /暂停
 /确认

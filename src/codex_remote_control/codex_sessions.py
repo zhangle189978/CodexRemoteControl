@@ -53,6 +53,15 @@ class CodexSessionSource:
             return None
         return sessions[index - 1]
 
+    def get_progress(self, session_id: str, limit: int = 12) -> str:
+        events = self._read_key_events(session_id)
+        if not events:
+            return "没有找到这个 Codex 会话的进展。"
+        return "\n".join(events[-max(1, limit) :])
+
+    def get_tail(self, session_id: str, limit: int = 20) -> str:
+        return self.get_progress(session_id, limit=limit)
+
     def _build_session(self, row: dict[str, Any]) -> CodexSession:
         session_id = str(row["id"])
         workspace_path, summary = self._read_rollout_details(session_id)
@@ -149,6 +158,17 @@ class CodexSessionSource:
         matches = sorted(sessions_dir.rglob(f"*{session_id}.jsonl"))
         return matches[-1] if matches else None
 
+    def _read_key_events(self, session_id: str) -> list[str]:
+        rollout_path = self._find_rollout_path(session_id)
+        if rollout_path is None:
+            return []
+        events: list[str] = []
+        for row in _read_jsonl(rollout_path):
+            event = _extract_key_event(row)
+            if event:
+                events.append(event)
+        return events
+
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -199,6 +219,60 @@ def _extract_message_text(payload: object) -> str:
     if not text:
         return ""
     return f"{label}：{text}"
+
+
+def _extract_key_event(row: dict[str, Any]) -> str:
+    row_type = row.get("type")
+    payload = row.get("payload")
+    if row_type == "response_item":
+        message_text = _extract_message_text(payload)
+        if message_text:
+            return _truncate(message_text, 1000)
+        if isinstance(payload, dict):
+            item_type = payload.get("type")
+            if item_type == "function_call":
+                name = payload.get("name")
+                if isinstance(name, str) and name:
+                    return f"工具调用：{name}"
+            if item_type == "function_call_output":
+                output = payload.get("output")
+                if isinstance(output, str) and output.strip():
+                    return f"工具输出：{_truncate(output.strip(), 800)}"
+        return ""
+    if row_type != "event_msg" or not isinstance(payload, dict):
+        return ""
+    event_type = payload.get("type")
+    if event_type == "agent_message" and isinstance(payload.get("message"), str):
+        return f"助手：{_truncate(payload['message'].strip(), 1000)}"
+    if event_type == "exec_command_end":
+        command_text = _format_command(payload.get("command"))
+        exit_code = payload.get("exit_code")
+        if isinstance(exit_code, int):
+            first_line = f"命令完成：{command_text} -> {exit_code}"
+        else:
+            first_line = f"命令完成：{command_text}"
+        output = _command_output(payload)
+        if output:
+            return f"{first_line}\n{_truncate(output, 800)}"
+        return first_line
+    return ""
+
+
+def _format_command(command: object) -> str:
+    if isinstance(command, list):
+        parts = [str(part) for part in command if str(part)]
+        return " ".join(parts) if parts else "<unknown>"
+    if isinstance(command, str) and command.strip():
+        return command.strip()
+    return "<unknown>"
+
+
+def _command_output(payload: dict[str, Any]) -> str:
+    for key in ("aggregated_output", "output", "stdout", "stderr"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
 
 
 def _truncate(text: str, limit: int) -> str:
