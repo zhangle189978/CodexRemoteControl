@@ -10,7 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from codex_remote_control.codex_app_server import CodexAppServerClient
+from codex_remote_control.codex_app_server import (
+    CodexAppServerClient,
+    CodexAppServerTurnFailed,
+    CodexAppServerUnavailable,
+)
 from codex_remote_control.models import Task
 
 
@@ -58,7 +62,12 @@ class CodexAdapter:
                         task.workspace_path,
                     )
                     return CodexResult(summary=output, changed=True)
-                except Exception:
+                except CodexAppServerTurnFailed as error:
+                    return CodexResult(
+                        summary=f"Codex app-server turn failed: {error}",
+                        changed=True,
+                    )
+                except CodexAppServerUnavailable:
                     pass
             output = self.process_runner(
                 [

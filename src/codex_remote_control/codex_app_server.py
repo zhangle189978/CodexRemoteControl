@@ -16,10 +16,24 @@ from typing import Any
 import websockets
 
 
+class CodexAppServerUnavailable(RuntimeError):
+    pass
+
+
+class CodexAppServerTurnFailed(RuntimeError):
+    pass
+
+
 class CodexAppServerClient:
-    def __init__(self, command: str = "codex", startup_timeout: float = 20.0) -> None:
+    def __init__(
+        self,
+        command: str = "codex",
+        startup_timeout: float = 20.0,
+        turn_timeout: float = 60 * 60,
+    ) -> None:
         self.command = command
         self.startup_timeout = startup_timeout
+        self.turn_timeout = turn_timeout
 
     def run_turn(self, thread_id: str, instruction: str, cwd: Path) -> str:
         result: dict[str, str] = {}
@@ -33,7 +47,9 @@ class CodexAppServerClient:
 
         thread = threading.Thread(target=target, daemon=True)
         thread.start()
-        thread.join()
+        thread.join(self.turn_timeout + self.startup_timeout)
+        if thread.is_alive():
+            raise TimeoutError("Codex app-server turn timed out")
         if "value" in error:
             raise error["value"]
         return result.get("value", "")
@@ -41,6 +57,7 @@ class CodexAppServerClient:
     async def _run_turn_async(self, thread_id: str, instruction: str, cwd: Path) -> str:
         port = _free_local_port()
         uri = f"ws://127.0.0.1:{port}"
+        turn_started = False
         process = subprocess.Popen(
             _command_for_subprocess([self.command, "app-server", "--listen", uri]),
             cwd=cwd,
@@ -83,7 +100,12 @@ class CodexAppServerClient:
                     timeout=120,
                 )
                 turn_id = _turn_id(started)
-                return await _collect_turn_text(rpc, turn_id)
+                turn_started = True
+                return await _collect_turn_text(rpc, turn_id, timeout=self.turn_timeout)
+        except Exception as exc:
+            if turn_started:
+                raise CodexAppServerTurnFailed(str(exc)) from exc
+            raise CodexAppServerUnavailable(str(exc)) from exc
         finally:
             process.terminate()
             try:
@@ -131,15 +153,21 @@ class _JsonRpc:
         return dict(event) if isinstance(event, dict) else {}
 
 
-async def _collect_turn_text(rpc: _JsonRpc, turn_id: str) -> str:
+async def _collect_turn_text(rpc: _JsonRpc, turn_id: str, timeout: float = 60 * 60) -> str:
     message_text_by_id: dict[str, str] = {}
     deltas_by_id: dict[str, list[str]] = {}
+    deadline = time.monotonic() + timeout
     while True:
-        event = await rpc.next_event(timeout=300)
+        remaining = max(1.0, deadline - time.monotonic())
+        if remaining <= 1.0 and time.monotonic() >= deadline:
+            raise TimeoutError("Codex app-server turn timed out")
+        event = await rpc.next_event(timeout=min(300, remaining))
         method = event.get("method")
         params = event.get("params")
         if not isinstance(params, dict) or params.get("turnId") != turn_id:
             continue
+        if method == "error":
+            return _format_turn_error(params)
         if method == "item/agentMessage/delta":
             item_id = str(params.get("itemId") or "")
             delta = params.get("delta")
@@ -153,6 +181,9 @@ async def _collect_turn_text(rpc: _JsonRpc, turn_id: str) -> str:
                 if item_id and isinstance(text, str):
                     message_text_by_id[item_id] = text
         if method == "turn/completed":
+            turn = params.get("turn")
+            if isinstance(turn, dict) and turn.get("status") == "failed":
+                return _format_turn_error(turn)
             if message_text_by_id:
                 return "\n".join(text for text in message_text_by_id.values() if text).strip()
             return "\n".join("".join(parts) for parts in deltas_by_id.values()).strip()
@@ -163,6 +194,18 @@ def _turn_id(started: dict[str, Any]) -> str:
     if not isinstance(turn, dict) or not isinstance(turn.get("id"), str):
         raise RuntimeError("turn/start did not return a turn id")
     return turn["id"]
+
+
+def _format_turn_error(params: dict[str, Any]) -> str:
+    error = params.get("error")
+    if not isinstance(error, dict):
+        return "Codex turn failed."
+    message = error.get("message")
+    detail = error.get("additionalDetails")
+    parts = [part for part in (message, detail) if isinstance(part, str) and part.strip()]
+    if not parts:
+        return "Codex turn failed."
+    return "Codex turn failed: " + "\n".join(parts)
 
 
 def _free_local_port() -> int:

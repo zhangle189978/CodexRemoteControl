@@ -6,5 +6,6 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 config/local.toml
+config/data/
 data/
 logs/

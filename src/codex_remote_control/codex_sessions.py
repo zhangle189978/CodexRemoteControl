@@ -244,6 +244,8 @@ def _extract_key_event(row: dict[str, Any]) -> str:
     event_type = payload.get("type")
     if event_type == "agent_message" and isinstance(payload.get("message"), str):
         return f"助手：{_truncate(payload['message'].strip(), 1000)}"
+    if event_type == "error" and isinstance(payload.get("message"), str):
+        return f"Codex error: {_truncate(payload['message'].strip(), 1000)}"
     if event_type == "exec_command_end":
         command_text = _format_command(payload.get("command"))
         exit_code = payload.get("exit_code")

@@ -161,6 +161,33 @@ def test_get_progress_includes_recent_messages_and_tool_outputs(tmp_path: Path) 
     assert "助手：测试通过，等待你确认提交。" in progress
 
 
+def test_get_progress_includes_codex_error_events(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    _write_jsonl(
+        codex_home / "sessions" / "2026" / "05" / "08" / "rollout-session-error.jsonl",
+        [
+            {
+                "timestamp": "2026-05-08T01:00:00Z",
+                "type": "session_meta",
+                "payload": {"id": "session-error", "cwd": str(tmp_path / "Repo")},
+            },
+            {
+                "timestamp": "2026-05-08T01:01:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "error",
+                    "message": "Codex ran out of room in the model's context window.",
+                },
+            },
+        ],
+    )
+
+    progress = CodexSessionSource(codex_home).get_progress("session-error", limit=5)
+
+    assert "Codex error: Codex ran out of room" in progress
+
+
 def test_get_tail_limits_recent_key_events(tmp_path: Path) -> None:
     codex_home = tmp_path / ".codex"
     codex_home.mkdir()

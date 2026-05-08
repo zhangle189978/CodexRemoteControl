@@ -1,18 +1,44 @@
 # Codex Remote Control
 
-本项目是在 Windows 本机运行的 Codex 远程控制网关。目标是让你在 PC 端启动 Codex 编程任务后，可以通过钉钉或飞书在手机上查看进展、切换会话、补充指令，并在需要确认时继续推进。
+Windows local gateway for controlling Codex work from DingTalk or Feishu.
 
-## 当前能力
+The practical target is: start a coding task on the PC, leave the desk, then use
+mobile chat to inspect progress, select a Codex session, send follow-up
+instructions, and confirm guarded actions.
 
-- 飞书 HTTP Webhook 接入。
-- 钉钉 HTTP Webhook 接入。
-- 钉钉 Stream 模式接入，不需要公网隧道。
-- 远程创建、切换、暂停、继续本地任务。
-- 导入最近的 Codex 桌面会话，并通过 Codex app-server 在原 thread 中继续执行。
-- 查看导入会话的最新进展、尾部事件和命令执行结果。
-- commit 等 release 动作必须二次确认，普通文本不会误触发。
+## Features
 
-## 安装
+- Feishu HTTP webhook.
+- DingTalk HTTP webhook.
+- DingTalk Stream mode, so local development does not need a public tunnel.
+- Task creation, switching, pausing, continuing, diff, tests, and guarded commit.
+- Import recent Codex desktop sessions from `~/.codex`.
+- Continue imported Codex sessions through the experimental Codex app-server.
+- Read imported session progress, tail events, assistant replies, and command
+  results from Codex rollout records.
+- Require explicit confirmation for release actions such as commit.
+
+## Current Limitation
+
+For imported Codex desktop sessions, `/继续 ...` starts a new turn against the
+same Codex thread record. The message is persisted into the same rollout file,
+but the currently open Codex desktop UI does not live-refresh external writes.
+
+Observed behavior:
+
+- Mobile command is recorded in the Codex thread history.
+- DingTalk can read progress through `/进展`, `/尾巴 20`, or `/刷新`.
+- The already-open desktop UI may not display that mobile turn until the app
+  reloads or the session is reopened.
+- If Codex reports `context window exceeded`, the bridge now returns that error
+  instead of silently hanging.
+
+True live injection into the visible desktop UI requires either Codex desktop to
+connect to the same long-lived app-server, or a separate UI automation layer that
+types into the desktop input box. This repository currently uses the safer
+app-server/session-record approach.
+
+## Install
 
 ```powershell
 python -m venv .venv
@@ -21,15 +47,13 @@ python -m pip install -e ".[dev]"
 npm install
 ```
 
-## 配置
-
-复制示例配置：
+## Configure
 
 ```powershell
 Copy-Item config/local.example.toml config/local.toml
 ```
 
-填写必要字段：
+Fill the required local fields:
 
 - `feishu.app_id`
 - `feishu.app_secret`
@@ -40,53 +64,48 @@ Copy-Item config/local.example.toml config/local.toml
 - `workspace.root`
 - `workspace.default_test_command`
 
-不要提交 `config/local.toml`。
+Do not commit `config/local.toml`.
 
-## 运行
+## Run
 
-### 飞书或 HTTP 回调模式
-
-```powershell
-.\.venv\Scripts\uvicorn.exe codex_remote_control.app:create_app --factory --host 127.0.0.1 --port 8765
-```
-
-开发期通过本地隧道暴露下面其中一个地址，再配置到机器人后台：
-
-- `http://127.0.0.1:8765/feishu/webhook`
-- `http://127.0.0.1:8765/dingtalk/webhook`
-
-### 钉钉 Stream 模式
-
-钉钉 Stream 模式不需要公网隧道。先启动本地 Python 服务：
+Start the local Python service:
 
 ```powershell
 .\.venv\Scripts\uvicorn.exe codex_remote_control.app:create_app --factory --host 127.0.0.1 --port 8765
 ```
 
-再启动钉钉 Stream 桥接进程：
+HTTP webhook endpoints:
+
+```text
+http://127.0.0.1:8765/feishu/webhook
+http://127.0.0.1:8765/dingtalk/webhook
+```
+
+For DingTalk Stream mode, keep the Python service running and start:
 
 ```powershell
 .\scripts\start_dingtalk_stream.ps1
 ```
 
-桥接进程会读取 `config/local.toml` 里的钉钉配置，把钉钉消息转发到本地 webhook，并把本地回复发回钉钉机器人。
+The stream bridge reads DingTalk settings from `config/local.toml`, forwards
+messages to the local webhook, and sends local replies back to DingTalk.
 
-## Codex 会话接管
+## Codex Session Handoff
 
-手机端查看最近 Codex 桌面会话：
+List recent Codex sessions:
 
 ```text
 /最近会话
 ```
 
-导入最新会话或指定编号：
+Import the newest session or a numbered session:
 
 ```text
 /导入最近
 /导入最近 2
 ```
 
-导入后可以查看进展：
+Inspect progress after import:
 
 ```text
 /进展
@@ -94,38 +113,29 @@ Copy-Item config/local.example.toml config/local.toml
 /刷新
 ```
 
-- `/进展`：读取当前导入 Codex 会话的最新关键消息、助手回复和命令结果。
-- `/尾巴 [数量]`：读取最近 N 条关键事件，默认 20 条。
-- `/刷新`：重新读取最新进展，并写回当前导入任务的摘要。
-
-继续原 Codex 会话：
+Continue the imported session:
 
 ```text
-/继续 按方案 A 继续实现，完成后等我确认
+/继续 按方案 A 推进，完成后等我确认
 ```
 
-导入的 Codex 会话会优先通过本机 experimental Codex app-server 协议执行：
+Plain text is treated like `/继续 <text>` when the current task is not waiting
+for a guarded confirmation.
 
-- 加载原 Codex thread。
-- 把钉钉消息作为同一个 thread 的新 turn 启动。
-- 监听助手回复并回发钉钉。
-- 如果 app-server 不可用，自动回落到 `codex exec resume <session-id> <message>`。
-
-也可以直接发普通文本；只要当前任务没有等待 release 确认，普通文本等价于 `/继续 <文本>`。
-
-PC 端可以把最新 Codex 桌面会话主动暴露给最近一个钉钉用户：
+From the PC, expose the latest active Codex desktop session to the most recent
+DingTalk user:
 
 ```powershell
 .\scripts\adopt_current_codex_session.ps1
 ```
 
-如果还没有钉钉用户给桥接服务发过消息，显式传入用户 id：
+If no DingTalk user has contacted the service yet:
 
 ```powershell
 .\scripts\adopt_current_codex_session.ps1 -UserId <dingtalk-sender-id>
 ```
 
-## 支持命令
+## Commands
 
 ```text
 /新任务 <项目路径> <目标>
@@ -146,11 +156,12 @@ PC 端可以把最新 Codex 桌面会话主动暴露给最近一个钉钉用户�
 /提交
 ```
 
-`/提交` 只会准备 release 动作，必须继续发送 `/确认` 才会真正 commit。发送普通文本不会确认 release 动作。
+`/提交` only prepares a guarded commit action. Send `/确认` to actually commit,
+or `/拒绝` to cancel. Plain text never confirms a guarded action.
 
-## 验证
+## Verification
 
-提交前运行：
+Run before committing or pushing:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
@@ -159,4 +170,5 @@ node --check scripts/dingtalk_stream_bridge.mjs
 git diff --check
 ```
 
-项目没有定义 `npm test`。Node 侧当前只有钉钉 Stream 桥接脚本，使用 `node --check` 做语法验证。
+The project does not define `npm test`; the Node side currently only contains
+the DingTalk Stream bridge, checked with `node --check`.

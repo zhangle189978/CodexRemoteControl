@@ -2,6 +2,10 @@ import json
 from pathlib import Path
 
 from codex_remote_control.codex_adapter import CodexAdapter, _command_for_subprocess
+from codex_remote_control.codex_app_server import (
+    CodexAppServerTurnFailed,
+    CodexAppServerUnavailable,
+)
 from codex_remote_control.models import PermissionLevel
 from codex_remote_control.store import TaskStore
 
@@ -31,7 +35,16 @@ class FailingAppServerClient:
 
     def run_turn(self, thread_id: str, instruction: str, cwd: Path) -> str:
         self.calls.append((thread_id, instruction, cwd))
-        raise RuntimeError("app-server unavailable")
+        raise CodexAppServerUnavailable("app-server unavailable")
+
+
+class FailedTurnAppServerClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, Path]] = []
+
+    def run_turn(self, thread_id: str, instruction: str, cwd: Path) -> str:
+        self.calls.append((thread_id, instruction, cwd))
+        raise CodexAppServerTurnFailed("context window exceeded")
 
 
 def _imported_task(tmp_path: Path):
@@ -102,6 +115,24 @@ def test_continue_imported_codex_session_falls_back_to_exec_resume(tmp_path: Pat
     ]
     assert "019e0024-4186-7440-b23b-0185fd8def85" in command
     assert "从钉钉继续执行" in command
+
+
+def test_continue_imported_codex_session_does_not_fallback_after_turn_started(
+    tmp_path: Path,
+) -> None:
+    task = _imported_task(tmp_path)
+    runner = FakeProcessRunner()
+    app_server = FailedTurnAppServerClient()
+    adapter = CodexAdapter(
+        command="codex-test",
+        process_runner=runner,
+        app_server_client=app_server,
+    )
+
+    result = adapter.continue_task(task, "从钉钉继续执行")
+
+    assert "context window exceeded" in result.summary
+    assert runner.calls == []
 
 
 def test_continue_imported_codex_session_requires_instruction(tmp_path: Path) -> None:
